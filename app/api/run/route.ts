@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { dispatchTask } from '../../../lib/dispatcher';
 import { runExperts } from '../../../lib/experts';
+import { runQualityLoop } from '../../../lib/quality';
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
@@ -11,7 +12,8 @@ export async function POST(req: Request) {
   try {
     const plan = await dispatchTask(task);
     const results = await runExperts(plan.subtasks);
-    return NextResponse.json({ plan, results });
+    const quality = await runQualityLoop(task, results);
+    return NextResponse.json({ plan, results, quality });
   } catch (e) {
     const message = e instanceof Error ? e.message : '执行失败';
     const status = message.includes('DEEPSEEK_API_KEY') ? 500 : 502;
