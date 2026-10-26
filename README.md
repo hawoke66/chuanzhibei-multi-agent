@@ -1,36 +1,105 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 多智能体协作台
 
-## Getting Started
+传智杯 AI WEB 网页开发挑战赛参赛作品（开发中）。
 
-First, run the development server:
+一个 AI Native Web 应用：用户输入一个任务，调度官先把任务拆成子任务，
+调研员、文案官、代码手按需并行执行，汇总官合成一稿，质检官打分，
+不通过就打回修订，最多修订 2 轮，最后聚合出最终成果。
+页面上有 7 张 Agent 状态卡，执行过程边跑边更新。
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## 功能
+
+- 任务输入：输入一段文字任务，提交后全链自动执行
+- 调度拆分：调度官只拆分、不写正文，输出 JSON 计划（交给谁、目标、交付物）
+- 专家并行：调研员、文案官、代码手按需激活；调研先行，文案可用调研结果
+- 汇总质检：汇总官去重、不扩写；质检官输出结构化分数与意见（80 分及以上通过）
+- 修订回环：质检不通过只改反馈指出的问题，最多修订 2 轮
+- 状态卡片：调度官、调研员、文案官、代码手、汇总官、质检官、修订官，
+  实时显示等待 / 进行中 / 完成 / 失败 / 未激活，附详情（子任务数、输出字数、质检分数）
+- 流式进度：`/api/run` 以 NDJSON 流式返回进度事件，页面边跑边更新
+
+## 技术架构
+
+- 前端：Next.js 16.4.3（App Router）+ React 19.3 + TypeScript + Tailwind CSS 4
+- AI：DeepSeek API（`deepseek-chat`），直接调用，不经过第三方中转
+- 通信：浏览器 fetch 读取 `/api/run` 的 NDJSON 流，逐行解析进度事件
+- 存储：无数据库、无账号登录；任务只在当次请求内处理，不持久化
+
+工作流：
+
+```
+用户任务
+  → 调度官（拆分，JSON 计划）
+  → 调研员（先行）→ 文案官 / 代码手（并行，可用调研结果）
+  → 汇总官（合成一稿）
+  → 质检官（分数 + pass/fail + 意见）
+  → 不通过 → 修订官 → 再质检（最多 2 轮）
+  → 最终聚合（修订稿在前、汇总稿在后，取第一个非空 + 落款）
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+目录结构：
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+app/
+  page.tsx          首页：状态卡 + 任务输入 + 最终成果 + 计划 + 专家输出
+  api/run/route.ts  全链编排 + 流式进度事件
+lib/
+  deepseek.ts       DeepSeek 调用助手（支持 JSON 模式）
+  dispatcher.ts     调度官
+  experts.ts        调研员 / 文案官 / 代码手
+  quality.ts        汇总官 / 质检官 / 修订官 / 质检回环
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 本地运行
 
-## Learn More
+环境要求：Node.js LTS（开发机实测 v24.21.0）、npm、Git。
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm install
+cp .env.example .env.local
+# 在 .env.local 里填入自己的 DeepSeek API Key
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+打开 http://localhost:3000 ，输入任务并提交。
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+生产构建：
 
-## Deploy on Vercel
+```bash
+npm run build
+npm start
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 环境变量
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| 变量 | 说明 |
+| --- | --- |
+| `DEEPSEEK_API_KEY` | DeepSeek API Key，必填，只放在本地 `.env.local` 里 |
+
+`.env.local` 已被 `.gitignore` 忽略，绝不要把 Key 提交进仓库。
+`.env.example` 只是一个空模板，里面没有真实 Key。
+
+## 团队信息
+
+- 参赛者：胡琮琳（北华航天工业学院，文理学院信息与计算科学专业）
+- 队伍最终人选、指导老师：待确认，确认后更新此处
+- 赛道：AI WEB 网页开发挑战赛，组别 B 组（普通本科）
+
+## 开发进度（截至 2026-10-26）
+
+- [x] 第一步：任务输入页 + DeepSeek 直连
+- [x] 第二步：调度官拆分
+- [x] 第三步：专家并行执行
+- [x] 第四步：汇总 + 质检 + 修订回环
+- [x] 第五步：Agent 状态卡 + 流式进度
+- [x] README
+- [ ] 在线演示（Vercel 部署，待办）
+- [ ] 演示视频 5-8 分钟（待办）
+- [ ] 技术文档 PDF（不超过 30 页，待办）
+- [ ] 代码仓库推送到 GitHub 公开仓（待办，报名提交时需要）
+
+## 注意事项
+
+- 调研目前走模型知识整理，尚未接入实时联网搜索；联网搜索是后续可选项。
+- 长任务全链可能需要一两分钟，页面状态卡会实时显示当前进行到哪一步。
+- 本项目为原创 Web 应用，AI 为核心流程，不是简单 API 调用包装。
