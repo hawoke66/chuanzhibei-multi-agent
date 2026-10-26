@@ -28,7 +28,7 @@ const CODER_SYSTEM = [
   '不要写调研报告和文案。',
 ].join('\n');
 
-async function runOne(subtask: Subtask, researchContext: string): Promise<ExpertResult> {
+export async function runExpert(subtask: Subtask, researchContext: string): Promise<ExpertResult> {
   try {
     let system = '';
     let user = `任务目标：${subtask.goal}\n交付物：${subtask.deliverable}`;
@@ -61,12 +61,12 @@ async function runOne(subtask: Subtask, researchContext: string): Promise<Expert
 export async function runExperts(subtasks: Subtask[]): Promise<ExpertResult[]> {
   const researchTasks = subtasks.filter((s) => s.agent === 'research');
   const otherTasks = subtasks.filter((s) => s.agent !== 'research');
-  const researchResults = await Promise.all(researchTasks.map((s) => runOne(s, '')));
+  const researchResults = await Promise.all(researchTasks.map((s) => runExpert(s, '')));
   const researchContext = researchResults
     .filter((r) => r.status === 'done')
     .map((r) => r.output)
     .join('\n\n');
-  const otherResults = await Promise.all(otherTasks.map((s) => runOne(s, researchContext)));
+  const otherResults = await Promise.all(otherTasks.map((s) => runExpert(s, researchContext)));
   const byId = new Map<string, ExpertResult>();
   [...researchResults, ...otherResults].forEach((r) => byId.set(r.subtaskId, r));
   return subtasks.map((s) => byId.get(s.id) as ExpertResult);
