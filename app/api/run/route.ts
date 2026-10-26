@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { dispatchTask } from '../../../lib/dispatcher';
+import { runExperts } from '../../../lib/experts';
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
@@ -9,9 +10,10 @@ export async function POST(req: Request) {
   }
   try {
     const plan = await dispatchTask(task);
-    return NextResponse.json({ plan });
+    const results = await runExperts(plan.subtasks);
+    return NextResponse.json({ plan, results });
   } catch (e) {
-    const message = e instanceof Error ? e.message : '调度失败';
+    const message = e instanceof Error ? e.message : '执行失败';
     const status = message.includes('DEEPSEEK_API_KEY') ? 500 : 502;
     return NextResponse.json({ error: message }, { status });
   }
