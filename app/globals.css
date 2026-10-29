@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #050816;
+  --foreground: #eef2ff;
 }
 
 @theme inline {
@@ -12,15 +12,68 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Background: the starry photo lives on the fixed .bg-base layer (slow
+   Ken Burns pan/zoom in CSS, see app/dynamic-background.tsx). A light
+   canvas layer above it twinkles ≤150 dim stars and fires one meteor
+   every 15-30s; both stay behind the content (main is z-10). */
+body {
+  background-color: #050816;
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* 底图缓动层：30 秒一个完整往返，alternate 平滑倒回。
+   z-index 用 0 而非 -1：负数层级在 body 背景不传播的边缘情况下
+   可能被盖住，0 则永远位于内容层（z-10）之下、之上无遮挡。 */
+.bg-base {
+  position: fixed;
+  inset: -4%;
+  z-index: 0;
+  background-image: url("/starry-background.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  will-change: transform;
+  animation: kenBurns 30s ease-in-out infinite alternate;
+}
+
+@keyframes kenBurns {
+  0% {
+    transform: scale(1.05) translate(2%, 1.5%);
+  }
+  50% {
+    transform: scale(1.15) translate(-2%, -1.5%);
+  }
+  100% {
+    transform: scale(1.08) translate(1%, -3%);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* 星星 / 流星 canvas 层：不挡内容、不响应鼠标 */
+.bg-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-base {
+    animation: none;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.4s ease both;
 }
