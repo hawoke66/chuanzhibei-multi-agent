@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { extractFileText, FileImportError, REFERENCE_CHAR_LIMIT } from '../lib/import-file';
+import { keywordScore } from '../lib/retrieve';
+import MarkdownView from './markdown-view';
 
 type AgentName = 'research' | 'writer' | 'coder';
 type AgentId = 'dispatcher' | AgentName | 'summarizer' | 'qc' | 'reviser';
@@ -29,6 +31,7 @@ interface QcResult {
   score: number;
   verdict: 'pass' | 'fail';
   feedback: string;
+  breakdown?: { facts: number; relevance: number; structure: number; language: number };
 }
 
 interface QualityOutcome {
@@ -37,6 +40,7 @@ interface QualityOutcome {
   revisions: number;
   final: string;
   finalVerdict?: 'pass' | 'fail' | 'none';
+  usage?: { prompt: number; completion: number };
 }
 
 interface HistoryItem {
@@ -110,6 +114,10 @@ const TEXT: Record<Lang, Partial<Record<string, string>>> = {
     pass: '通过',
     fail: '不通过',
     qcFailNote: '质检未通过，以上为第 {n} 轮修订稿，可重试或调整任务',
+    rubricFacts: '事实',
+    rubricRelevance: '契合',
+    rubricStructure: '结构',
+    rubricLanguage: '语言',
     feedback: '意见',
     plan: '调度计划',
     expertOutput: '专家输出',
@@ -127,11 +135,14 @@ const TEXT: Record<Lang, Partial<Record<string, string>>> = {
     seconds: '秒',
     characters: '字数',
     qcScore: '质检分数',
+    tokens: 'Token 消耗',
     expand: '展开',
     collapse: '收起',
     copyCode: '复制代码',
     code: '代码',
     retry: '重新提交',
+    cancel: '取消',
+    runCancelled: '已取消，可修改任务后重新提交',
     aiHighlights: 'AI 技术亮点',
     progress: '总体进度',
     researchWriterChars: '调研与文案字数',
@@ -143,6 +154,13 @@ const TEXT: Record<Lang, Partial<Record<string, string>>> = {
     aiStep4: '质检',
     aiStep5: '最多 2 轮修订',
     aiNotes: '调度只拆分不写正文、调研给事实不编造、质检 ≥80 分才通过、Key 只读环境变量不进代码仓库。',
+    scenarios: '适用场景',
+    scenarioStudentTitle: '学生调研',
+    scenarioStudentDesc: '写课程报告：选题丢进去，先出带引用的事实，再聚合成稿，省去从零翻资料的时间。',
+    scenarioOpsTitle: '运营文案',
+    scenarioOpsDesc: '给主题和卖点，一条链产出能直接改用的活动文案。',
+    scenarioDevTitle: '开发示例代码',
+    scenarioDevDesc: '描述需求，代码手直接给出可运行示例和说明。',
     reference: '参考资料（可选）',
     referencePlaceholder: '粘贴一段参考文字，调研会优先用这里的事实',
     importFile: '导入文件',
@@ -172,6 +190,10 @@ const TEXT: Record<Lang, Partial<Record<string, string>>> = {
     pass: 'Pass',
     fail: 'Fail',
     qcFailNote: 'QC did not pass. Above is the draft after {n} revision round(s). You can retry or adjust the task.',
+    rubricFacts: 'Facts',
+    rubricRelevance: 'Relevance',
+    rubricStructure: 'Structure',
+    rubricLanguage: 'Language',
     feedback: 'Feedback',
     plan: 'Execution plan',
     expertOutput: 'Specialist output',
@@ -189,11 +211,14 @@ const TEXT: Record<Lang, Partial<Record<string, string>>> = {
     seconds: 's',
     characters: 'Characters',
     qcScore: 'QC score',
+    tokens: 'Tokens',
     expand: 'Expand',
     collapse: 'Collapse',
     copyCode: 'Copy code',
     code: 'Code',
     retry: 'Retry',
+    cancel: 'Cancel',
+    runCancelled: 'Cancelled. You can adjust the task and submit again.',
     aiHighlights: 'AI highlights',
     progress: 'Overall progress',
     researchWriterChars: 'Research + copy characters',
@@ -205,6 +230,13 @@ const TEXT: Record<Lang, Partial<Record<string, string>>> = {
     aiStep4: 'Quality check',
     aiStep5: 'Up to 2 revisions',
     aiNotes: 'The coordinator only splits tasks; research provides facts without fabrication; QC requires a score of 80+ to pass; the API key is read from environment variables only and never committed to the repository.',
+    scenarios: 'Who uses it',
+    scenarioStudentTitle: 'Student research',
+    scenarioStudentDesc: 'Drop in a course topic: cited facts first, then a drafted write-up — skip the blank-page phase.',
+    scenarioOpsTitle: 'Marketing copy',
+    scenarioOpsDesc: 'Give a theme and talking points, get a ready-to-edit promo draft.',
+    scenarioDevTitle: 'Code samples',
+    scenarioDevDesc: 'Describe what you need and get runnable examples with notes.',
     reference: 'Reference (optional)',
     referencePlaceholder: 'Paste reference text; research will prioritize facts from it',
     importFile: 'Import file',
@@ -261,6 +293,20 @@ function isHistoryItem(value: unknown): value is HistoryItem {
     typeof item.elapsed === 'number' &&
     typeof item.time === 'string'
   );
+}
+
+// 过往任务召回：按关键词重合度找最相似的一条历史任务
+function findRelevantHistory(task: string, items: HistoryItem[]): HistoryItem | null {
+  let best: HistoryItem | null = null;
+  let bestScore = 0;
+  for (const item of items) {
+    const score = keywordScore(task, item.task);
+    if (score > bestScore) {
+      bestScore = score;
+      best = item;
+    }
+  }
+  return bestScore > 0 ? best : null;
 }
 
 async function copyText(text: string): Promise<boolean> {
@@ -415,6 +461,9 @@ export default function Home() {
   const doneHandledRef = useRef(false);
   const copyTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const cancelRef = useRef(false);
+  const [cancelled, setCancelled] = useState(false);
 
   useEffect(() => {
     try {
@@ -539,6 +588,14 @@ export default function Home() {
     }
   }
 
+  function cancelRun() {
+    cancelRef.current = true;
+    abortRef.current?.abort();
+    setLoading(false);
+    setError('');
+    setCancelled(true);
+  }
+
   async function executeTask(
     taskToRun: string,
     options?: { reference: string; experts: AgentName[] }
@@ -559,11 +616,16 @@ export default function Home() {
       setError(t('importTooLong'));
       return;
     }
+    const recalled = findRelevantHistory(cleanTask, history);
+    const historyRef = recalled ? recalled.final.slice(0, 2000) : '';
 
     startedAtRef.current = Date.now();
     activeTaskRef.current = cleanTask;
     lastRunConfigRef.current = { task: cleanTask, reference: runReference, experts: runExperts };
     doneHandledRef.current = false;
+    cancelRef.current = false;
+    setCancelled(false);
+    abortRef.current = new AbortController();
 
     setLoading(true);
     setError('');
@@ -581,7 +643,8 @@ export default function Home() {
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: cleanTask, reference: runReference, experts: runExperts }),
+        body: JSON.stringify({ task: cleanTask, reference: runReference, experts: runExperts, historyRef }),
+        signal: abortRef.current?.signal,
       });
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({}));
@@ -602,9 +665,15 @@ export default function Home() {
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('executionFailed'));
-      setElapsed(Number(((Date.now() - startedAtRef.current) / 1000).toFixed(1)));
-      setRetryable(true);
+      if (cancelRef.current) {
+        // 用户主动取消：不报错误、不重试，状态卡停在当前步
+        setError('');
+        setRetryable(false);
+      } else {
+        setError(e instanceof Error ? e.message : t('executionFailed'));
+        setElapsed(Number(((Date.now() - startedAtRef.current) / 1000).toFixed(1)));
+        setRetryable(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -749,6 +818,7 @@ export default function Home() {
                 style={{ width: `${overallPercent}%` }}
               />
             </div>
+            {cancelled && <p className="mt-2 text-sm text-amber-300">{t('runCancelled')}</p>}
           </div>
         </section>
 
@@ -842,14 +912,25 @@ export default function Home() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => executeTask(task)}
-            disabled={loading || !task.trim()}
-            className="rounded-full bg-gradient-to-r from-indigo-600 to-violet-500 px-6 py-2.5 text-white shadow-lg transition hover:from-indigo-500 hover:to-violet-400 disabled:opacity-50"
-          >
-            {loading ? t('running') : t('submit')}
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => executeTask(task)}
+              disabled={loading || !task.trim()}
+              className="rounded-full bg-gradient-to-r from-indigo-600 to-violet-500 px-6 py-2.5 text-white shadow-lg transition hover:from-indigo-500 hover:to-violet-400 disabled:opacity-50"
+            >
+              {loading ? t('running') : t('submit')}
+            </button>
+            {loading && (
+              <button
+                type="button"
+                onClick={cancelRun}
+                className="rounded-full border border-red-300/40 bg-red-500/15 px-6 py-2.5 text-red-200 transition hover:bg-red-500/25"
+              >
+                {t('cancel')}
+              </button>
+            )}
+          </div>
         </section>
 
         <section className="rounded-2xl border border-white/15 bg-slate-950/80 p-5 shadow-lg">
@@ -869,6 +950,22 @@ export default function Home() {
             ))}
           </ol>
           <p className="mt-4 text-xs leading-relaxed text-indigo-200/75">{t('aiNotes')}</p>
+        </section>
+
+        <section className="rounded-2xl border border-white/15 bg-slate-950/80 p-5 shadow-lg">
+          <h2 className="text-lg font-semibold text-white">{t('scenarios')}</h2>
+          <ul className="mt-4 grid gap-3 sm:grid-cols-3">
+            {[
+              [t('scenarioStudentTitle'), t('scenarioStudentDesc')],
+              [t('scenarioOpsTitle'), t('scenarioOpsDesc')],
+              [t('scenarioDevTitle'), t('scenarioDevDesc')],
+            ].map(([title, desc]) => (
+              <li key={title} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <p className="text-sm font-medium text-white">{title}</p>
+                <p className="mt-1 text-sm leading-relaxed text-indigo-100/85">{desc}</p>
+              </li>
+            ))}
+          </ul>
         </section>
 
         {history.length > 0 && (
@@ -966,6 +1063,9 @@ export default function Home() {
               <MetricCard label={t('elapsed')} value={`${shownElapsed?.toFixed(1) ?? '—'} ${t('seconds')}`} />
               <MetricCard label={t('characters')} value={String(shownFinalChars)} />
               {!selectedHistory && <MetricCard label={t('researchWriterChars')} value={String(researchWriterChars)} />}
+              {!selectedHistory && quality?.usage && (
+                <MetricCard label={t('tokens')} value={`${quality.usage.prompt} + ${quality.usage.completion}`} />
+              )}
               <MetricCard
                 label={t('qcScore')}
                 value={shownScore === null ? '—' : `${shownScore}${selectedHistory ? '' : ` ${t('scoreSuffix')}`}`}
@@ -991,7 +1091,9 @@ export default function Home() {
               <p className="text-sm text-red-200/90">{t('qcFailNote').replace('{n}', String(shownRevisions))}</p>
             )}
 
-            <pre className="whitespace-pre-wrap rounded-2xl border border-white/20 bg-slate-950 p-5 text-indigo-50 shadow-lg">{shownFinal}</pre>
+            <div className="rounded-2xl border border-white/20 bg-slate-950 p-5 shadow-lg">
+              <MarkdownView text={shownFinal} copyLabel={t('copyCode')} copiedLabel={t('copied')} />
+            </div>
             <p className="text-sm text-indigo-200">{t('revisions')}：{shownRevisions}</p>
 
             {!selectedHistory && quality && (
@@ -1001,6 +1103,11 @@ export default function Home() {
                   {quality.qcHistory.map((q, i) => (
                     <li key={i} className="rounded-2xl border border-white/20 bg-slate-950 p-4 shadow-lg">
                       <p>{t('qcRound')} {i + 1} {t('qcRoundSuffix')}：{q.score} {t('scoreSuffix')}，{q.verdict === 'pass' ? t('pass') : t('fail')}</p>
+                      {q.breakdown && (
+                        <p className="mt-1 text-xs text-indigo-200/80">
+                          {t('rubricFacts')} {q.breakdown.facts} · {t('rubricRelevance')} {q.breakdown.relevance} · {t('rubricStructure')} {q.breakdown.structure} · {t('rubricLanguage')} {q.breakdown.language}
+                        </p>
+                      )}
                       <p className="mt-1 text-indigo-200">{t('feedback')}：{q.feedback}</p>
                     </li>
                   ))}

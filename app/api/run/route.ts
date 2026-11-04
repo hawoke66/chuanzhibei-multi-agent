@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { dispatchTask } from '../../../lib/dispatcher';
 import { runExpert } from '../../../lib/experts';
-import { retrieveTopK } from '../../../lib/retrieve';
+import { getTokenUsage, resetTokenUsage } from '../../../lib/deepseek';
 import { summarize, checkQuality, revise } from '../../../lib/quality';
 
 const FOOTER = '\n\n——多智能体协作台完成（调度·调研·文案·代码）';
@@ -32,6 +32,8 @@ export async function POST(req: Request) {
   if (Array.from(reference).length > REFERENCE_MAX_CHARS) {
     return NextResponse.json({ error: `参考资料过长，请控制在 ${REFERENCE_MAX_CHARS / 10000} 万字以内` }, { status: 400 });
   }
+  // 过往任务召回：客户端按关键词匹配到的历史成果片段，注入调研员上下文
+  const historyRef = typeof body?.historyRef === 'string' ? body.historyRef.slice(0, 2000) : '';
   const requestedExperts: unknown = body?.experts;
   const selectedExperts: SelectedExpert[] = Array.isArray(requestedExperts)
     ? ALLOWED_EXPERTS.filter((agent) => requestedExperts.includes(agent))
@@ -40,12 +42,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: '请至少选择一个专家' }, { status: 400 });
   }
   const encoder = new TextEncoder();
+  // 客户端断开后置位：各阶段之间检查，停止后续 Agent 调用（进行中的调用结果丢弃）
+  let clientGone = false;
+  const CANCELLED = '__client_cancelled__';
   const stream = new ReadableStream({
     async start(controller) {
       const send = (obj: unknown) => {
+        if (clientGone) return;
         controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
       };
+      const throwIfCancelled = () => {
+        if (clientGone) throw new Error(CANCELLED);
+      };
       try {
+        throwIfCancelled();
+        resetTokenUsage();
         send({ type: 'stage', agent: 'dispatcher', status: 'running' });
         const dispatched = await dispatchTask(task);
         const plan = {
@@ -71,16 +82,11 @@ export async function POST(req: Request) {
         });
         const researchTasks = plan.subtasks.filter((s) => s.agent === 'research');
         const otherTasks = plan.subtasks.filter((s) => s.agent !== 'research');
-        // 检索式 RAG：按子任务目标从参考资料取 top-k 相关块；
-        // 参考资料为空或检索无相关块时退回全文，保证不空跑、不报错。
-        const groundingFor = (goal: string): string => {
-          if (!reference) return '';
-          const chunks = retrieveTopK(goal, reference);
-          if (chunks.length === 0) return reference;
-          return chunks.map((c) => `【参考${c.index}】\n${c.text}`).join('\n\n');
-        };
+        // 检索已工具化：参考资料全文交给调研员，由其经 function calling 自主调用本地检索；
+        // 模型侧异常时专家内部自动降级为服务端 top-k 检索。
         researchTasks.forEach((s) => send({ type: 'stage', agent: s.agent, status: 'running' }));
-        const rawResearchResults = await Promise.all(researchTasks.map((s) => runExpert(s, '', groundingFor(s.goal))));
+        throwIfCancelled();
+        const rawResearchResults = await Promise.all(researchTasks.map((s) => runExpert(s, '', reference, historyRef)));
         const researchResults = selectedExperts.includes('coder')
           ? rawResearchResults
           : rawResearchResults.map((r) => ({ ...r, output: stripCodeBlocks(r.output) }));
@@ -89,6 +95,7 @@ export async function POST(req: Request) {
         );
         const researchContext = researchResults.filter((r) => r.status === 'done').map((r) => r.output).join('\n\n');
         otherTasks.forEach((s) => send({ type: 'stage', agent: s.agent, status: 'running' }));
+        throwIfCancelled();
         const rawOtherResults = await Promise.all(otherTasks.map((s) => runExpert(s, researchContext)));
         const otherResults = selectedExperts.includes('coder')
           ? rawOtherResults
@@ -109,6 +116,7 @@ export async function POST(req: Request) {
           return;
         }
         send({ type: 'stage', agent: 'summarizer', status: 'running' });
+        throwIfCancelled();
         let draft = await summarize(task, results);
         if (!draft) draft = results.filter((r: { status: string }) => r.status === 'done').map((r: { output: string }) => r.output).join('\n\n');
         send({ type: 'stage', agent: 'summarizer', status: 'done', detail: `汇总 ${draft.length} 字` });
@@ -116,11 +124,13 @@ export async function POST(req: Request) {
         const qcHistory: unknown[] = [];
         let revisions = 0;
         for (let i = 0; i < 2; i++) {
+          throwIfCancelled();
           send({ type: 'stage', agent: 'qc', status: 'running', detail: `第 ${i + 1} 次质检` });
           const qc = await checkQuality(task, current);
           qcHistory.push(qc);
           send({ type: 'stage', agent: 'qc', status: 'done', detail: `${qc.score} 分，${qc.verdict === 'pass' ? '通过' : '不通过'}` });
           if (qc.verdict === 'pass') break;
+          throwIfCancelled();
           send({ type: 'stage', agent: 'reviser', status: 'running' });
           current = await revise(task, current, qc.feedback);
           revisions += 1;
@@ -130,14 +140,27 @@ export async function POST(req: Request) {
         const finalDraft = selectedExperts.includes('coder') ? current : stripCodeBlocks(current);
         const lastQc = qcHistory[qcHistory.length - 1] as { verdict?: string } | undefined;
         const finalVerdict = lastQc?.verdict === 'pass' ? 'pass' : qcHistory.length > 0 ? 'fail' : 'none';
-        const quality = { draft, qcHistory, revisions, final: finalDraft + FOOTER, finalVerdict };
+        const quality = { draft, qcHistory, revisions, final: finalDraft + FOOTER, finalVerdict, usage: getTokenUsage() };
         send({ type: 'done', plan, results, quality });
       } catch (e) {
-        const message = e instanceof Error ? e.message : '执行失败';
-        send({ type: 'error', error: message });
+        if (!(e instanceof Error && e.message === CANCELLED)) {
+          const message = e instanceof Error ? e.message : '执行失败';
+          try {
+            send({ type: 'error', error: message });
+          } catch {
+            // 连接已断开，发不出去就丢弃
+          }
+        }
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // 连接已断开时关闭会抛错，忽略
+        }
       }
+    },
+    cancel() {
+      clientGone = true;
     },
   });
   return new Response(stream, {

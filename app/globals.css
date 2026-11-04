@@ -63,6 +63,65 @@ body {
   }
 }
 
+/* 最终成果 Markdown 渲染（MarkdownView 组件） */
+.md-view {
+  line-height: 1.75;
+  color: var(--foreground);
+  word-break: break-word;
+}
+.md-view h1,
+.md-view h2,
+.md-view h3,
+.md-view h4 {
+  margin: 1em 0 0.5em;
+  font-weight: 600;
+  color: #fff;
+}
+.md-view h1 {
+  font-size: 1.35rem;
+}
+.md-view h2 {
+  font-size: 1.15rem;
+}
+.md-view h3 {
+  font-size: 1.05rem;
+}
+.md-view p {
+  margin: 0.6em 0;
+}
+.md-view ul,
+.md-view ol {
+  margin: 0.6em 0;
+  padding-left: 1.4em;
+}
+.md-view ul {
+  list-style: disc;
+}
+.md-view ol {
+  list-style: decimal;
+}
+.md-view li {
+  margin: 0.25em 0;
+}
+.md-view blockquote {
+  margin: 0.8em 0;
+  border-left: 3px solid rgba(167, 139, 250, 0.5);
+  padding-left: 0.9em;
+  color: rgba(199, 210, 254, 0.9);
+}
+.md-view a {
+  color: #a5b4fc;
+  text-decoration: underline;
+}
+.md-view strong {
+  font-weight: 600;
+  color: #fff;
+}
+.md-view hr {
+  margin: 1.2em 0;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

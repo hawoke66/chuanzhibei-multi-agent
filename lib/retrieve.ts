@@ -54,6 +54,17 @@ function tokenize(text: string): string[] {
   return tokens;
 }
 
+/** 目标与文本的关键词重合打分（供检索与历史召回共用） */
+export function keywordScore(query: string, text: string): number {
+  const terms = tokenize(query);
+  const lower = text.toLowerCase();
+  let score = 0;
+  for (const term of terms) {
+    if (lower.includes(term)) score += term.length > 2 ? 2 : 1;
+  }
+  return score;
+}
+
 /**
  * 按子任务目标从参考资料中取相关度最高的 topK 块。
  * 返回的块按原文顺序排列；任何一块都无关（最高分为 0）时返回空数组。
@@ -64,15 +75,7 @@ export function retrieveTopK(goal: string, reference: string, topK = TOP_K): Ret
   if (chunks.length <= topK) {
     return chunks.map((text, i) => ({ index: i + 1, text }));
   }
-  const terms = tokenize(goal);
-  const scored = chunks.map((text, index) => {
-    const lower = text.toLowerCase();
-    let score = 0;
-    for (const term of terms) {
-      if (lower.includes(term)) score += term.length > 2 ? 2 : 1;
-    }
-    return { index, score, text };
-  });
+  const scored = chunks.map((text, index) => ({ index, score: keywordScore(goal, text), text }));
   const best = Math.max(...scored.map((s) => s.score));
   if (best === 0) return [];
   return scored
