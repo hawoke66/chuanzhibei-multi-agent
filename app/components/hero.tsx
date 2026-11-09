@@ -74,8 +74,8 @@ function CoordinationMap({
       >
         <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} className="absolute inset-0 h-full w-full" aria-hidden="true">
           {EDGES.map((edge) => {
-            // 待走的连线（专家 → 质检）从标签下方起笔，别穿过名字
-            const point = edgePoints(NODES[edge.from], NODES[edge.to], edge.pending ? 34 : 30);
+            // 六条连线同粗细、同不透明度；标签在节点侧边，两条斜线不会再穿过文字
+            const point = edgePoints(NODES[edge.from], NODES[edge.to], edge.pending ? 28 : 30);
             return (
               <g key={`${edge.from}-${edge.to}`}>
                 <line
@@ -84,10 +84,9 @@ function CoordinationMap({
                   x2={point.x2}
                   y2={point.y2}
                   stroke="currentColor"
-                  strokeOpacity={edge.pending ? 0.26 : 0.46}
-                  strokeWidth={edge.pending ? 0.9 : 1.4}
-                  strokeDasharray={edge.pending ? '5 8' : undefined}
-                  className={edge.pending ? 'text-ink-3' : 'text-ink-2'}
+                  strokeOpacity={0.46}
+                  strokeWidth={1.4}
+                  className="text-ink-2"
                 />
                 <line
                   x1={point.x1}
