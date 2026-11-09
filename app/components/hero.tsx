@@ -75,7 +75,7 @@ function CoordinationMap({
         <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} className="absolute inset-0 h-full w-full" aria-hidden="true">
           {EDGES.map((edge) => {
             // 待走的连线（专家 → 质检）从标签下方起笔，别穿过名字
-            const point = edgePoints(NODES[edge.from], NODES[edge.to], edge.pending ? 56 : 32);
+            const point = edgePoints(NODES[edge.from], NODES[edge.to], edge.pending ? 34 : 30);
             return (
               <g key={`${edge.from}-${edge.to}`}>
                 <line
@@ -136,8 +136,10 @@ function CoordinationMap({
               </span>
             </div>
             <p
-              className={`hero-node-label absolute left-1/2 hidden -translate-x-1/2 whitespace-nowrap caption-4 text-ink-2 sm:block ${
-                node.id === 'dispatcher' ? 'bottom-full mb-2' : 'top-4'
+              className={`hero-node-label absolute left-0 top-1/2 hidden -translate-y-1/2 whitespace-nowrap caption-4 text-ink-2 sm:block ${
+                node.id === 'dispatcher' || node.id === 'research'
+                  ? '-ml-10 -translate-x-full text-right'
+                  : 'ml-10 text-left'
               }`}
             >
               <span className="node-in" style={{ animationDelay: `${node.delay + 120}ms` }}>
