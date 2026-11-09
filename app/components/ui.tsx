@@ -1,16 +1,17 @@
-﻿'use client';
+'use client';
 
-import type { ComponentType, ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useLayoutEffect, useRef, type ComponentType, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import type { IconProps } from '@phosphor-icons/react';
 
 /* ============================================================
    全站基础件
    1. 图标：一套 Phosphor，一种字重，两个尺寸（16 / 18）
-   2. 四角星状态点：全站唯一签名细节
-   3. 滚动显现：上浮 32px + 淡入，只播一次
-   4. 词级大字标语：逐行从淡色过渡到全色
-   5. 开关：插件启停
+   2. 四角星状态点：全站唯一签名细节（进行中带一圈微光）
+   3. 滚动翻页：区块绕顶边小角度翻折 + 缩放 + 淡入，进度跟着滚动走
+   4. 标题逐字／逐词升起
+   5. 词级大字标语
+   6. 开关：插件启停
    ============================================================ */
 
 export type GlyphComponent = ComponentType<IconProps>;
@@ -55,7 +56,19 @@ export function StarDot({
       className={`${STAR_TONE[state]} shrink-0 ${className}`}
     >
       {state === 'running' && (
-        <circle cx="8" cy="8" r="7.2" fill="none" stroke="currentColor" strokeOpacity="0.3" strokeWidth="0.8" />
+        <>
+          <circle cx="8" cy="8" r="7.2" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="0.8" />
+          <circle
+            className="star-live"
+            cx="8"
+            cy="8"
+            r="7"
+            fill="none"
+            stroke="currentColor"
+            strokeOpacity="0.45"
+            strokeWidth="0.9"
+          />
+        </>
       )}
       <path
         d="M8 0.7 9.5 6.5 15.3 8 9.5 9.5 8 15.3 6.5 9.5 0.7 8 6.5 6.5Z"
@@ -68,59 +81,57 @@ export function StarDot({
   );
 }
 
-/* 兜底扫描：平滑滚动或锚点跳转会一次跨过整段内容，IntersectionObserver
-   可能既不报告进入也不报告离开；这里用一条 rAF 节流的滚动监听把已越过的
-   区块补亮，全部播完就自动摘掉监听。 */
-type Watcher = { element: HTMLElement; show: () => void };
+/* ---------------- 滚动翻页 ---------------- */
 
-const watchers = new Set<Watcher>();
+type Flip = { el: HTMLElement; delay: number };
+
+const flips = new Set<Flip>();
 let frame = 0;
-let listening = false;
+let bound = false;
+
+function onScroll() {
+  if (frame) return;
+  frame = requestAnimationFrame(tick);
+}
+
+/** 翻页角度：桌面 12 度、窄屏减半；滚到视口 55% 高度处翻完，播完即摘掉监听。 */
+function tick() {
+  frame = 0;
+  const viewport = window.innerHeight;
+  const span = Math.max(240, viewport * 0.55);
+  const angle = window.innerWidth < 768 ? 6 : 12;
+
+  for (const flip of Array.from(flips)) {
+    const rect = flip.el.getBoundingClientRect();
+    const offset = flip.delay * 0.35;
+    const progress = Math.min(1, Math.max(0, (viewport - rect.top - offset) / span));
+    flip.el.style.setProperty('--reveal-p', progress.toFixed(3));
+    flip.el.style.setProperty('--reveal-angle', `${(angle * (1 - progress)).toFixed(2)}deg`);
+    if (progress >= 1) {
+      flips.delete(flip);
+      flip.el.dataset.settled = 'true';
+    }
+  }
+
+  if (flips.size === 0) stopListening();
+}
 
 function startListening() {
-  if (listening) return;
-  listening = true;
-  window.addEventListener('scroll', onScrollOrResize, { passive: true });
-  window.addEventListener('resize', onScrollOrResize);
+  if (bound) return;
+  bound = true;
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
 }
 
 function stopListening() {
-  if (!listening) return;
-  listening = false;
-  window.removeEventListener('scroll', onScrollOrResize);
-  window.removeEventListener('resize', onScrollOrResize);
+  if (!bound) return;
+  bound = false;
+  window.removeEventListener('scroll', onScroll);
+  window.removeEventListener('resize', onScroll);
   if (frame) {
     cancelAnimationFrame(frame);
     frame = 0;
   }
-}
-
-function onScrollOrResize() {
-  if (frame) return;
-  frame = requestAnimationFrame(sweep);
-}
-
-function sweep() {
-  frame = 0;
-  const limit = window.innerHeight * 0.95;
-  for (const watcher of Array.from(watchers)) {
-    if (watcher.element.getBoundingClientRect().top < limit) {
-      watchers.delete(watcher);
-      watcher.show();
-    }
-  }
-  if (watchers.size === 0) stopListening();
-}
-
-function watchReveal(element: HTMLElement, show: () => void): () => void {
-  const watcher: Watcher = { element, show };
-  watchers.add(watcher);
-  startListening();
-  onScrollOrResize();
-  return () => {
-    watchers.delete(watcher);
-    if (watchers.size === 0) stopListening();
-  };
 }
 
 export function Reveal({
@@ -135,45 +146,68 @@ export function Reveal({
   id?: string;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [shown, setShown] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
-    let done = false;
-    const reveal = () => {
-      if (done) return;
-      done = true;
-      setShown(true);
-      observer.disconnect();
-      unwatch();
-    };
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) reveal();
-      },
-      { rootMargin: '0px 0px -10% 0px', threshold: 0.01 },
-    );
-    observer.observe(element);
-    const unwatch = watchReveal(element, reveal);
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      element.dataset.settled = 'true';
+      return;
+    }
+    element.style.setProperty('--reveal-p', '0');
+    const flip: Flip = { el: element, delay };
+    flips.add(flip);
+    startListening();
+    onScroll();
     return () => {
-      observer.disconnect();
-      unwatch();
+      flips.delete(flip);
+      if (flips.size === 0) stopListening();
     };
-  }, []);
+  }, [delay]);
 
   return (
-    <div
-      ref={ref}
-      id={id}
-      className={`reveal ${className}`}
-      data-shown={shown ? 'true' : 'false'}
-      style={delay ? { transitionDelay: `${delay}ms` } : undefined}
-    >
+    <div ref={ref} id={id} className={`reveal-flip ${className}`}>
       {children}
     </div>
   );
 }
+
+/* ---------------- 标题逐字 / 逐词 ---------------- */
+
+function splitRise(text: string): { words: string[]; spaced: boolean } {
+  if (/\s/.test(text)) {
+    return { words: text.split(/\s+/).filter(Boolean), spaced: true };
+  }
+  return { words: Array.from(text), spaced: false };
+}
+
+export function RiseText({
+  text,
+  start = 0,
+  step = 34,
+  className = '',
+}: {
+  text: string;
+  start?: number;
+  step?: number;
+  className?: string;
+}) {
+  const { words, spaced } = splitRise(text);
+  return (
+    <span className={className}>
+      {words.map((word, index) => (
+        <Fragment key={`${word}-${index}`}>
+          <span className="rise-word" style={{ animationDelay: `${start + index * step}ms` }}>
+            {word}
+          </span>
+          {spaced && index < words.length - 1 ? ' ' : null}
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
+/* ---------------- 大字标语 ---------------- */
 
 export function WordReveal({ words, className = '' }: { words: string[]; className?: string }) {
   const ref = useRef<HTMLParagraphElement | null>(null);
@@ -182,6 +216,7 @@ export function WordReveal({ words, className = '' }: { words: string[]; classNa
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
+    const spans = Array.from(element.querySelectorAll<HTMLElement>('[data-word]'));
     const observer = new IntersectionObserver(
       (entries) => {
         const crossed = entries
@@ -200,16 +235,10 @@ export function WordReveal({ words, className = '' }: { words: string[]; classNa
           return changed ? next : previous;
         });
       },
-      { rootMargin: '-25% 0px -30% 0px', threshold: 0 },
+      { rootMargin: '-22% 0px -28% 0px', threshold: 0 },
     );
-    const spans = Array.from(element.querySelectorAll<HTMLElement>('[data-word]'));
     spans.forEach((span) => observer.observe(span));
-    // 兜底：整段已经进入视口就一次点亮，避免锚点跳转后停在淡色
-    const unwatch = watchReveal(element, () => setLit(words.map(() => true)));
-    return () => {
-      observer.disconnect();
-      unwatch();
-    };
+    return () => observer.disconnect();
   }, [words]);
 
   return (

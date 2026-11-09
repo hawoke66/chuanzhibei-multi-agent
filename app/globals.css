@@ -183,16 +183,6 @@ html {
   filter: saturate(0.4) brightness(0.4) contrast(1.08);
   opacity: 0.85;
   will-change: transform;
-  animation: galaxyDrift 96s var(--ease-out-soft) infinite alternate;
-}
-
-@keyframes galaxyDrift {
-  from {
-    transform: scale(1.06) translate3d(0.6%, 0.4%, 0);
-  }
-  to {
-    transform: scale(1.12) translate3d(-0.8%, -0.6%, 0);
-  }
 }
 
 .bg-stars {
@@ -200,12 +190,6 @@ html {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bg-galaxy {
-    animation: none;
-  }
 }
 
 /* 首屏链路标签：用背景色描掉背后的连线，标签仍留在图里 */
@@ -216,36 +200,201 @@ html {
 }
 
 /* ============================================================
-   滚动显现：每区进入视口上浮 32px + 淡入，只播一次
+   滚动翻页（A）：区块绕顶边小角度翻折 + 0.96→1 + 淡入
+   --reveal-p / --reveal-angle 由 ui.tsx 的 rAF 逐帧写入，幅度跟着滚动走；
+   翻完即定格，不回滚重播。窄屏角度减半，减动态只留淡入。
    ============================================================ */
-.reveal {
+.reveal-flip {
+  opacity: calc(0.08 + 0.92 * var(--reveal-p, 1));
+  transform: perspective(1400px) rotateX(var(--reveal-angle, 0deg))
+    scale(calc(0.96 + 0.04 * var(--reveal-p, 1)));
+  transform-origin: top center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 减动态：不翻折、不位移，只留一次淡入 */
+  .reveal-flip {
+    opacity: 0;
+    transform: none;
+    transition: opacity 420ms linear;
+  }
+
+  .reveal-flip[data-settled="true"] {
+    opacity: 1;
+  }
+}
+
+/* 标题逐字（中文）／逐词（英文）升起：区块翻到位后才开始 */
+.rise-word {
+  display: inline-block;
   opacity: 0;
-  transform: translateY(32px);
-  transition:
-    opacity 700ms var(--ease-out-soft),
-    transform 700ms var(--ease-out-soft);
+  transform: translateY(0.42em);
+  animation: wordRise 620ms var(--ease-out-soft) both;
+  animation-play-state: paused;
 }
 
-.reveal[data-shown="true"] {
-  opacity: 1;
-  transform: none;
+.rise-run .rise-word,
+[data-settled="true"] .rise-word {
+  animation-play-state: running;
 }
 
+@keyframes wordRise {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise-word {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+}
+
+/* 大字标语：滚动到时逐行点亮并上浮 */
 .word {
-  opacity: 0.3;
-  transition: opacity 500ms var(--ease-out-soft);
+  opacity: 0.28;
+  transform: translateY(6px);
+  transition:
+    opacity 520ms var(--ease-out-soft),
+    transform 520ms var(--ease-out-soft);
 }
 
 .word[data-lit="true"] {
   opacity: 1;
+  transform: none;
+}
+
+/* 主按钮 hover 微光：一条窄光斜着扫过，只动 transform 与 opacity */
+.sheen {
+  position: relative;
+  overflow: hidden;
+}
+
+.sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: linear-gradient(100deg, transparent 0%, rgb(169 155 245 / 45%) 50%, transparent 100%);
+  opacity: 0;
+  transform: translateX(-140%) skewX(-14deg);
+  transition:
+    transform 720ms var(--ease-out-soft),
+    opacity 200ms linear;
+  pointer-events: none;
+}
+
+.sheen:hover::after,
+.sheen:focus-visible::after {
+  opacity: 1;
+  transform: translateX(340%) skewX(-14deg);
+}
+
+/* 卡片 hover：上浮 2px + 边框亮一点，别多 */
+.lift {
+  transition:
+    transform 300ms var(--ease-out-soft),
+    border-color 300ms var(--ease-out-soft),
+    background-color 300ms var(--ease-out-soft);
+}
+
+.lift:hover {
+  transform: translateY(-2px);
+  border-color: var(--line-2);
+}
+
+/* 结果正文逐段淡入 */
+.doc-in .md-view > * {
+  animation: docLine 520ms var(--ease-out-soft) both;
+}
+
+.doc-in .md-view > :nth-child(1) { animation-delay: 40ms; }
+.doc-in .md-view > :nth-child(2) { animation-delay: 120ms; }
+.doc-in .md-view > :nth-child(3) { animation-delay: 200ms; }
+.doc-in .md-view > :nth-child(4) { animation-delay: 280ms; }
+.doc-in .md-view > :nth-child(5) { animation-delay: 360ms; }
+.doc-in .md-view > :nth-child(6) { animation-delay: 440ms; }
+.doc-in .md-view > :nth-child(7) { animation-delay: 520ms; }
+.doc-in .md-view > :nth-child(8) { animation-delay: 600ms; }
+.doc-in .md-view > :nth-child(n + 9) { animation-delay: 640ms; }
+
+@keyframes docLine {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reveal,
-  .word {
+  .doc-in .md-view > * {
+    animation: none;
+  }
+}
+
+/* 首屏链路：一次性电流（一条亮线跑完全程）+ 节点依次点亮 */
+.edge-current {
+  stroke-dasharray: 16 100;
+  stroke-dashoffset: 0;
+  animation: edgeFlow 900ms var(--ease-out-soft) both;
+}
+
+@keyframes edgeFlow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -116;
+  }
+}
+
+.node-in {
+  display: inline-block;
+  opacity: 0;
+  animation: nodeIn 520ms var(--ease-out-soft) both;
+}
+
+@keyframes nodeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.62);
+  }
+  to {
     opacity: 1;
-    transform: none;
-    transition: none;
+    transform: scale(1);
+  }
+}
+
+/* 进行中：星点外圈微光（全站只允许这一处循环） */
+.star-live {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: starLive 2400ms var(--ease-out-soft) infinite;
+}
+
+@keyframes starLive {
+  0%,
+  100% {
+    opacity: 0.18;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.45);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edge-current,
+  .node-in,
+  .star-live {
+    animation: none;
+  }
+
+  .node-in {
+    opacity: 1;
   }
 }
 

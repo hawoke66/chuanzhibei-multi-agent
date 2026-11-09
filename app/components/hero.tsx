@@ -2,11 +2,12 @@
 
 import { ArrowRight } from '@phosphor-icons/react';
 import type { AgentId } from '../copy';
-import { Glyph, StarDot, type StarState } from './ui';
+import { Glyph, RiseText, StarDot, type StarState } from './ui';
 
 /* 首屏：左边一句话定位 + 两个动作，右边协作链路星座图。
    链路图是产品的真实结构（调度拆活、三位专家并行、汇总成稿要过质检），不是装饰插画。
-   节点用与专家区同一套四角星状态点：调度已完成、调研进行中、另外两位与质检等待中。 */
+   节点用与专家区同一套四角星状态点：调度已完成、调研进行中、另外两位与质检等待中。
+   动效：每条连线跑一条一次性电流，节点按 调度 → 三位专家 → 质检 的顺序依次点亮。 */
 
 const VIEW_W = 800;
 const VIEW_H = 500;
@@ -17,23 +18,24 @@ interface DiagramNode {
   y: number;
   state: StarState;
   size: 14 | 16 | 20;
+  delay: number;
 }
 
 const NODES: DiagramNode[] = [
-  { id: 'dispatcher', x: 400, y: 66, state: 'done', size: 20 },
-  { id: 'research', x: 132, y: 252, state: 'running', size: 16 },
-  { id: 'writer', x: 400, y: 252, state: 'waiting', size: 16 },
-  { id: 'coder', x: 668, y: 252, state: 'waiting', size: 16 },
-  { id: 'qc', x: 400, y: 432, state: 'waiting', size: 20 },
+  { id: 'dispatcher', x: 400, y: 66, state: 'done', size: 20, delay: 180 },
+  { id: 'research', x: 132, y: 252, state: 'running', size: 16, delay: 900 },
+  { id: 'writer', x: 400, y: 252, state: 'waiting', size: 16, delay: 960 },
+  { id: 'coder', x: 668, y: 252, state: 'waiting', size: 16, delay: 1020 },
+  { id: 'qc', x: 400, y: 432, state: 'waiting', size: 20, delay: 1700 },
 ];
 
-const EDGES: { from: number; to: number; pending: boolean }[] = [
-  { from: 0, to: 1, pending: false },
-  { from: 0, to: 2, pending: false },
-  { from: 0, to: 3, pending: false },
-  { from: 1, to: 4, pending: true },
-  { from: 2, to: 4, pending: true },
-  { from: 3, to: 4, pending: true },
+const EDGES: { from: number; to: number; pending: boolean; delay: number }[] = [
+  { from: 0, to: 1, pending: false, delay: 420 },
+  { from: 0, to: 2, pending: false, delay: 500 },
+  { from: 0, to: 3, pending: false, delay: 580 },
+  { from: 1, to: 4, pending: true, delay: 1220 },
+  { from: 2, to: 4, pending: true, delay: 1290 },
+  { from: 3, to: 4, pending: true, delay: 1360 },
 ];
 
 /** 连线两端各留一段空隙，避免压住星点与名字。 */
@@ -74,18 +76,31 @@ function CoordinationMap({
           {EDGES.map((edge) => {
             const point = edgePoints(NODES[edge.from], NODES[edge.to], 26);
             return (
-              <line
-                key={`${edge.from}-${edge.to}`}
-                x1={point.x1}
-                y1={point.y1}
-                x2={point.x2}
-                y2={point.y2}
-                stroke="currentColor"
-                strokeOpacity={edge.pending ? 0.26 : 0.46}
-                strokeWidth={edge.pending ? 0.9 : 1.4}
-                strokeDasharray={edge.pending ? '5 8' : undefined}
-                className={edge.pending ? 'text-ink-3' : 'text-ink-2'}
-              />
+              <g key={`${edge.from}-${edge.to}`}>
+                <line
+                  x1={point.x1}
+                  y1={point.y1}
+                  x2={point.x2}
+                  y2={point.y2}
+                  stroke="currentColor"
+                  strokeOpacity={edge.pending ? 0.26 : 0.46}
+                  strokeWidth={edge.pending ? 0.9 : 1.4}
+                  strokeDasharray={edge.pending ? '5 8' : undefined}
+                  className={edge.pending ? 'text-ink-3' : 'text-ink-2'}
+                />
+                <line
+                  x1={point.x1}
+                  y1={point.y1}
+                  x2={point.x2}
+                  y2={point.y2}
+                  pathLength={100}
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                  strokeLinecap="round"
+                  style={{ animationDelay: `${edge.delay}ms` }}
+                  className="edge-current text-accent"
+                />
+              </g>
             );
           })}
 
@@ -115,10 +130,14 @@ function CoordinationMap({
             style={{ left: `${(node.x / VIEW_W) * 100}%`, top: `${(node.y / VIEW_H) * 100}%` }}
           >
             <div className="-translate-x-1/2 -translate-y-1/2">
-              <StarDot state={node.state} size={node.size} />
+              <span className="node-in" style={{ animationDelay: `${node.delay}ms` }}>
+                <StarDot state={node.state} size={node.size} />
+              </span>
             </div>
             <p className="hero-node-label absolute left-1/2 top-4 hidden -translate-x-1/2 whitespace-nowrap caption-4 text-ink-2 sm:block">
-              {agentLabel(node.id)}
+              <span className="node-in" style={{ animationDelay: `${node.delay + 120}ms` }}>
+                {agentLabel(node.id)}
+              </span>
             </p>
           </div>
         ))}
@@ -141,10 +160,10 @@ export default function Hero({
       <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-12 lg:grid-cols-12 lg:gap-8">
         <div className="lg:col-span-6">
           <p className="caption-4 text-ink-3">{t('heroKicker')}</p>
-          <h1 className="mt-6 max-w-[680px] text-pretty text-ink heading-4 sm:heading-3 lg:heading-2">
-            {t('heroTitleLine1')}
+          <h1 className="rise-run mt-6 max-w-[680px] text-pretty text-ink heading-4 sm:heading-3 lg:heading-2">
+            <RiseText text={t('heroTitleLine1')} start={80} step={40} />
             <br />
-            {t('heroTitleLine2')}
+            <RiseText text={t('heroTitleLine2')} start={220} step={30} />
           </h1>
           <p className="body-3 mt-6 max-w-[560px] text-pretty leading-7 text-ink-2">{t('heroSub')}</p>
 
@@ -152,7 +171,7 @@ export default function Hero({
             <button
               type="button"
               onClick={onStart}
-              className="button-md inline-flex items-center gap-2 whitespace-nowrap rounded-lg bg-ink px-4 py-2 text-void transition-[background-color,transform] duration-300 ease-out-soft hover:bg-white active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              className="sheen button-md inline-flex items-center gap-2 whitespace-nowrap rounded-lg bg-ink px-4 py-2 text-void transition-[background-color,transform] duration-300 ease-out-soft hover:bg-white active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               {t('heroCtaPrimary')}
               <Glyph as={ArrowRight} size={16} />

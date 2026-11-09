@@ -1,18 +1,43 @@
 ﻿'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowRight, CaretDown, Copy, Export } from '@phosphor-icons/react';
 import type { AgentId, AgentStatus } from '../copy';
 import type { ExpertResult, QcResult } from '../types';
 import MarkdownView from '../markdown-view';
 import { copyText, countCharacters, formatNumber, formatSeconds } from '../format';
-import { Glyph, Reveal, StarDot } from './ui';
+import { Glyph, Reveal, RiseText, StarDot } from './ui';
 
 /* 结果区：文档式长卷，不做卡片。
    左侧是成果正文与专家输出，右侧是质检读数；两栏不等宽，读数靠边对齐。 */
 
 const EMPTY_LINK =
   'caption-4 inline-flex items-center gap-1.5 text-ink-3 transition-colors duration-300 ease-out-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent';
+
+function useTween(target: number, duration = 900): number {
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const immediate = requestAnimationFrame(() => setValue(target));
+      return () => cancelAnimationFrame(immediate);
+    }
+    let raf = 0;
+    const start = performance.now();
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - start) / duration);
+      setValue(target * (1 - Math.pow(1 - progress, 3)));
+      if (progress < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return value;
+}
+
+function TweenNum({ value, format = formatNumber }: { value: number; format?: (v: number) => string }) {
+  const animated = useTween(value);
+  return <>{format(animated)}</>;
+}
 
 const TEXT_BUTTON =
   'caption-4 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-ink-3 transition-colors duration-300 ease-out-soft hover:bg-raised hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40';
@@ -86,7 +111,15 @@ function ExpertOutputRow({
   );
 }
 
-function Rubric({ t, latest }: { t: (key: string) => string; latest: QcResult | undefined }) {
+function Rubric({
+  t,
+  latest,
+  grown,
+}: {
+  t: (key: string) => string;
+  latest: QcResult | undefined;
+  grown: boolean;
+}) {
   if (!latest?.breakdown) return null;
   const rows = [
     { key: 'rubricFacts', weight: '30%', value: latest.breakdown.facts },
@@ -105,7 +138,13 @@ function Rubric({ t, latest }: { t: (key: string) => string; latest: QcResult | 
             <span className="caption-4 font-mono text-ink-2 tabular-nums">{formatNumber(row.value)}</span>
           </div>
           <div className="mt-1.5 h-px w-full bg-line-2">
-            <div className="h-px bg-accent/70" style={{ width: `${Math.max(0, Math.min(100, row.value))}%` }} />
+            <div
+              className="h-px origin-left bg-accent/70 transition-transform duration-700 ease-out-soft"
+              style={{
+                transform: `scaleX(${grown ? Math.max(0, Math.min(100, row.value)) / 100 : 0})`,
+                transitionDelay: `${rows.indexOf(row) * 90}ms`,
+              }}
+            />
           </div>
         </li>
       ))}
@@ -163,18 +202,20 @@ export default function Results({
   onStart: () => void;
 }) {
   const latest = qcHistory.length > 0 ? qcHistory[qcHistory.length - 1] : undefined;
+  const [grown, setGrown] = useState(false);
 
-  const metrics: { label: string; value: string }[] = [
-    { label: t('metricElapsed'), value: elapsed === null ? '—' : `${formatSeconds(elapsed)} ${t('secondsUnit')}` },
-    { label: t('metricChars'), value: formatNumber(characters) },
-  ];
-  if (!isHistoryView && usage) {
-    metrics.push({ label: t('metricTokens'), value: `${formatNumber(usage.prompt)} + ${formatNumber(usage.completion)}` });
-  }
-  if (!isHistoryView && researchWriterChars > 0) {
-    metrics.push({ label: t('researchWriterChars'), value: formatNumber(researchWriterChars) });
-  }
-  metrics.push({ label: t('metricScore'), value: score === null ? '—' : `${formatNumber(score)} / 100` });
+  useEffect(() => {
+    if (!hasResult) return;
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      setGrown(false);
+      second = requestAnimationFrame(() => setGrown(true));
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
+  }, [hasResult, score, isHistoryView]);
 
   return (
     <section id="result" className="relative mx-auto -mt-8 w-full max-w-7xl px-6 py-20 lg:px-8 lg:py-24">
@@ -182,7 +223,9 @@ export default function Results({
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-5">
           <div>
             <p className="caption-4 text-ink-3">{t('resultKicker')}</p>
-            <h2 className="heading-5 mt-2 text-ink">{t('resultTitle')}</h2>
+            <h2 className="heading-5 mt-2 text-ink">
+              <RiseText text={t('resultTitle')} start={80} step={40} />
+            </h2>
           </div>
           {hasResult && (
             <div className="flex items-center gap-2" aria-label={t('resultActionsLabel')}>
@@ -276,15 +319,43 @@ export default function Results({
             <p className="title-2 mt-1 text-pretty text-ink">{task}</p>
 
             <dl className="mt-5 flex flex-wrap gap-x-8 gap-y-3 border-y border-line py-3">
-              {metrics.map((metric) => (
-                <div key={`${metric.label}-${metric.value}`}>
-                  <dt className="caption-5 text-ink-3">{metric.label}</dt>
-                  <dd className="caption-2 mt-0.5 font-mono text-ink-2 tabular-nums">{metric.value}</dd>
+              <div>
+                <dt className="caption-5 text-ink-3">{t('metricElapsed')}</dt>
+                <dd className="caption-2 mt-0.5 font-mono text-ink-2 tabular-nums">
+                  {elapsed === null ? '—' : <><TweenNum value={elapsed} format={formatSeconds} /> {t('secondsUnit')}</>}
+                </dd>
+              </div>
+              <div>
+                <dt className="caption-5 text-ink-3">{t('metricChars')}</dt>
+                <dd className="caption-2 mt-0.5 font-mono text-ink-2 tabular-nums">
+                  <TweenNum value={characters} />
+                </dd>
+              </div>
+              {!isHistoryView && usage && (
+                <div>
+                  <dt className="caption-5 text-ink-3">{t('metricTokens')}</dt>
+                  <dd className="caption-2 mt-0.5 font-mono text-ink-2 tabular-nums">
+                    <TweenNum value={usage.prompt} /> + <TweenNum value={usage.completion} />
+                  </dd>
                 </div>
-              ))}
+              )}
+              {!isHistoryView && researchWriterChars > 0 && (
+                <div>
+                  <dt className="caption-5 text-ink-3">{t('researchWriterChars')}</dt>
+                  <dd className="caption-2 mt-0.5 font-mono text-ink-2 tabular-nums">
+                    <TweenNum value={researchWriterChars} />
+                  </dd>
+                </div>
+              )}
+              <div>
+                <dt className="caption-5 text-ink-3">{t('metricScore')}</dt>
+                <dd className="caption-2 mt-0.5 font-mono text-ink-2 tabular-nums">
+                  {score === null ? '—' : <><TweenNum value={score} /> / 100</>}
+                </dd>
+              </div>
             </dl>
 
-            <div className="mt-8">
+            <div className="doc-in mt-8">
               <MarkdownView text={final} copyLabel={t('copyCode')} copiedLabel={t('copied')} />
             </div>
 
@@ -321,7 +392,7 @@ export default function Results({
               <p className="caption-5 text-ink-3">{t('metricScore')}</p>
               <p className="mt-1 flex items-baseline gap-2">
                 <span className="heading-4 font-mono text-ink tabular-nums">
-                  {score === null ? '—' : formatNumber(score)}
+                  {score === null ? '—' : <TweenNum value={score} />}
                 </span>
                 <span className="caption-5 text-ink-3">/ 100</span>
                 <span className={`caption-2 ${scorePass ? 'text-ok' : 'text-danger'}`}>
@@ -333,11 +404,11 @@ export default function Results({
                   className={`h-full origin-left rounded-full transition-transform duration-500 ease-out-soft ${
                     scorePass ? 'bg-ok' : 'bg-danger'
                   }`}
-                  style={{ transform: `scaleX(${Math.max(0, Math.min(100, score ?? 0)) / 100})` }}
+                  style={{ transform: `scaleX(${grown ? Math.max(0, Math.min(100, score ?? 0)) / 100 : 0})` }}
                 />
               </div>
 
-              {!isHistoryView && <Rubric t={t} latest={latest} />}
+              {!isHistoryView && <Rubric t={t} latest={latest} grown={grown} />}
 
               {!isHistoryView && qcHistory.length > 0 && (
                 <>

@@ -78,7 +78,7 @@ export default function TaskPanel({
                       type="button"
                       onClick={() => onUseTemplate(template)}
                       disabled={loading}
-                      className="caption-4 rounded-lg border border-line px-2.5 py-1 text-ink-2 transition-colors duration-300 ease-out-soft hover:border-line-2 hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                      className="lift caption-4 rounded-lg border border-line px-2.5 py-1 text-ink-2 hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {template.label[lang]}
                     </button>
@@ -162,7 +162,7 @@ export default function TaskPanel({
                   return (
                     <label
                       key={agent}
-                      className={`caption-2 flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 transition-colors duration-300 ease-out-soft has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 ${
+                      className={`lift caption-2 flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 ${
                         active
                           ? 'border-line-2 bg-raised text-ink'
                           : 'border-line text-ink-2 hover:border-line-2 hover:text-ink'
@@ -187,7 +187,7 @@ export default function TaskPanel({
                 type="button"
                 onClick={onSubmit}
                 disabled={loading || !task.trim()}
-                className="button-md rounded-lg bg-ink px-4 py-2 text-void transition-[background-color,transform] duration-300 ease-out-soft hover:bg-white active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
+                className="sheen button-md rounded-lg bg-ink px-4 py-2 text-void transition-[background-color,transform] duration-300 ease-out-soft hover:bg-white active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {loading ? t('running') : t('submit')}
               </button>

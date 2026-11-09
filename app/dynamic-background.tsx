@@ -28,6 +28,7 @@ interface Star {
   speed: number;
   tint: number;
   drift: number;
+  depth: number;
   glow: boolean;
 }
 
@@ -82,6 +83,7 @@ const CONSTELLATION_PATTERNS: number[][][] = [
 
 export default function DynamicBackground() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const galaxyRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -93,6 +95,20 @@ export default function DynamicBackground() {
 
     const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     let reduced = motionQuery.matches;
+
+    // 视差：鼠标分层错开 3 到 5px，滚动时银河层缓慢上移
+    const pointer = { tx: 0, ty: 0, x: 0, y: 0 };
+    let scrollOffset = 0;
+
+    function onPointerMove(event: PointerEvent) {
+      if (width === 0 || height === 0) return;
+      pointer.tx = (event.clientX / width - 0.5) * 2;
+      pointer.ty = (event.clientY / height - 0.5) * 2;
+    }
+
+    function onScroll() {
+      scrollOffset = window.scrollY;
+    }
 
     let width = 0;
     let height = 0;
@@ -116,6 +132,7 @@ export default function DynamicBackground() {
         aMin: number,
         aMax: number,
         drift: number,
+        depth: number,
         glowRatio: number,
       ) => {
         for (let i = 0; i < count; i += 1) {
@@ -128,15 +145,16 @@ export default function DynamicBackground() {
             speed: rand(0.35, 1.4),
             tint: Math.floor(Math.random() * STAR_TINTS.length),
             drift,
+            depth,
             glow: Math.random() < glowRatio,
           });
         }
       };
 
       // 远、中、近三层：越近越大越亮，漂移越快
-      layer(mobile ? 170 : 300, 0.4, 0.9, 0.14, 0.38, 1.2, 0);
-      layer(mobile ? 90 : 150, 0.9, 1.5, 0.3, 0.62, 2.1, 0.12);
-      layer(mobile ? 24 : 38, 1.5, 2.3, 0.5, 0.9, 3.2, 0.45);
+      layer(mobile ? 170 : 300, 0.4, 0.9, 0.14, 0.38, 1.2, 1, 0);
+      layer(mobile ? 90 : 150, 0.9, 1.5, 0.3, 0.62, 2.1, 2, 0.12);
+      layer(mobile ? 24 : 38, 1.5, 2.3, 0.5, 0.9, 3.2, 3, 0.45);
 
       // 银河带：沿斜线撒的密集微星，不用渐变色块
       band = [];
@@ -210,6 +228,20 @@ export default function DynamicBackground() {
     function draw(now: number) {
       if (width === 0 || height === 0) return;
       const t = reduced ? 0 : now / 1000;
+
+      const targetX = reduced ? 0 : pointer.tx;
+      const targetY = reduced ? 0 : pointer.ty;
+      pointer.x += (targetX - pointer.x) * 0.07;
+      pointer.y += (targetY - pointer.y) * 0.07;
+
+      const galaxy = galaxyRef.current;
+      if (galaxy) {
+        const drift = reduced ? 0 : Math.sin(t * 0.05) * 7;
+        const offsetX = reduced ? 0 : pointer.x * 6;
+        const offsetY = reduced ? 0 : -scrollOffset * 0.06 + pointer.y * 5 + drift;
+        galaxy.style.transform = `translate3d(${offsetX.toFixed(2)}px, ${offsetY.toFixed(2)}px, 0) scale(1.09)`;
+      }
+
       ctx.clearRect(0, 0, width, height);
 
       // 银河带
@@ -245,24 +277,27 @@ export default function DynamicBackground() {
       // 星点
       const span = width + 40;
       for (const s of stars) {
-        const drift = (s.x + s.drift * t) % span;
+        const parallaxX = reduced ? 0 : pointer.x * s.depth * 1.7;
+        const parallaxY = reduced ? 0 : pointer.y * s.depth * 1.1 - scrollOffset * 0.015 * s.depth;
+        const drift = (s.x + s.drift * t + parallaxX) % span;
         const x = drift < 0 ? drift + span : drift;
+        const y = s.y + parallaxY;
         const twinkle = 0.5 + 0.5 * Math.sin(s.phase + t * s.speed);
         const alpha = s.base * (0.45 + 0.55 * twinkle);
         if (alpha <= 0.015) continue;
         const tint = STAR_TINTS[s.tint];
         if (s.glow) {
           const halo = s.r * 4;
-          const gradient = ctx.createRadialGradient(x, s.y, 0, x, s.y, halo);
+          const gradient = ctx.createRadialGradient(x, y, 0, x, y, halo);
           gradient.addColorStop(0, `rgba(${tint}, ${(alpha * 0.16).toFixed(3)})`);
           gradient.addColorStop(1, `rgba(${tint}, 0)`);
           ctx.fillStyle = gradient;
           ctx.beginPath();
-          ctx.arc(x, s.y, halo, 0, Math.PI * 2);
+          ctx.arc(x, y, halo, 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.beginPath();
-        ctx.arc(x, s.y, s.r, 0, Math.PI * 2);
+        ctx.arc(x, y, s.r, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(${tint}, ${alpha.toFixed(3)})`;
         ctx.fill();
       }
@@ -363,19 +398,24 @@ export default function DynamicBackground() {
     else start();
 
     window.addEventListener('resize', onResize);
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    window.addEventListener('scroll', onScroll, { passive: true });
+    scrollOffset = window.scrollY;
     motionQuery.addEventListener('change', onMotionChange);
 
     return () => {
       stop();
       if (resizeTimer !== null) window.clearTimeout(resizeTimer);
       window.removeEventListener('resize', onResize);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('scroll', onScroll);
       motionQuery.removeEventListener('change', onMotionChange);
     };
   }, []);
 
   return (
     <>
-      <div className="bg-galaxy" aria-hidden="true" />
+      <div ref={galaxyRef} className="bg-galaxy" aria-hidden="true" />
       <canvas ref={canvasRef} className="bg-stars" aria-hidden="true" />
     </>
   );
