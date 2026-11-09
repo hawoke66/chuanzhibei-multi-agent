@@ -29,7 +29,7 @@ function CodeBlock({
   }
 
   return (
-    <div className="my-4 overflow-hidden rounded-lg bg-void">
+    <div className="lift my-4 overflow-hidden rounded-lg border border-line bg-void">
       <div className="flex items-center justify-between border-b border-line px-4 py-2">
         <span className="caption-5 font-mono text-ink-3">{language || 'text'}</span>
         <button

@@ -1,4 +1,5 @@
 import { callDeepSeek, extractJson } from './deepseek';
+import { outputLanguageRule, type OutputLang } from './language';
 
 export type AgentName = 'research' | 'writer' | 'coder';
 
@@ -24,9 +25,9 @@ const SYSTEM = [
   '调研类任务必须有 research，写作类必须有 writer，只有明确需要写代码时才有 coder。',
 ].join('\n');
 
-export async function dispatchTask(task: string): Promise<Plan> {
+export async function dispatchTask(task: string, lang: OutputLang = 'zh'): Promise<Plan> {
   const text = await callDeepSeek({
-    system: SYSTEM,
+    system: [SYSTEM, outputLanguageRule(lang)].join('\n'),
     user: task,
     temperature: 0.3,
     jsonMode: true,

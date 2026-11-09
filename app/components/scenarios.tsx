@@ -6,10 +6,11 @@ import { Reveal } from './ui';
 /* 适用场景：三张卡不做三等分并排。
    第一张是唯一的表面块，第二张只有一条 hairline 起头并下沉，第三张抬升并前移，形成错落。 */
 
+// 三张卡统一形态，底色分别取深蓝 / 深紫 / 深青，都压在同一亮度区间里
 const CONTAINERS = [
-  'rounded-2xl bg-surface p-6 lg:p-8',
-  'border-t border-line pt-6',
-  'rounded-xl bg-raised p-6 lg:p-7',
+  'lift tint-blue rounded-2xl p-6 lg:p-8',
+  'lift tint-violet rounded-2xl p-6 lg:p-7',
+  'lift tint-teal rounded-2xl p-6 lg:p-7',
 ];
 
 const POSITIONS = [

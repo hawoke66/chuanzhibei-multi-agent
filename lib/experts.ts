@@ -2,6 +2,7 @@ import { callDeepSeek, callDeepSeekMessages } from './deepseek';
 import type { ChatMessage } from './deepseek';
 import { retrieveTopK } from './retrieve';
 import type { Subtask } from './dispatcher';
+import { outputLanguageRule, type OutputLang } from './language';
 
 export interface ExpertResult {
   subtaskId: string;
@@ -59,11 +60,17 @@ function formatChunks(chunks: { index: number; text: string }[]): string {
   return chunks.map((c) => `【参考${c.index}】\n${c.text}`).join('\n\n');
 }
 
-async function researchViaTool(subtask: Subtask, reference: string, historyContext: string): Promise<string> {
+async function researchViaTool(
+  subtask: Subtask,
+  reference: string,
+  historyContext: string,
+  lang: OutputLang,
+): Promise<string> {
   const system = [
     RESEARCH_SYSTEM,
     ...RESEARCH_GROUNDING_LINES,
     '需要引用事实时，先调用 search_reference 工具获取编号片段，再基于片段输出，并用【参考n】标注出处。',
+    outputLanguageRule(lang),
   ].join('\n');
   let user = `任务目标：${subtask.goal}\n交付物：${subtask.deliverable}`;
   if (historyContext) {
@@ -111,7 +118,8 @@ export async function runExpert(
   subtask: Subtask,
   researchContext: string,
   reference = '',
-  historyContext = ''
+  historyContext = '',
+  lang: OutputLang = 'zh',
 ): Promise<ExpertResult> {
   try {
     let system = '';
@@ -124,10 +132,10 @@ export async function runExpert(
       if (grounding) {
         try {
           // 首选：function calling 工具化检索，调研员自主决定检索什么
-          output = await researchViaTool(subtask, grounding, historyContext);
+          output = await researchViaTool(subtask, grounding, historyContext, lang);
         } catch {
           // 降级：function calling 在模型上行为异常时，回退服务端检索闭环
-          system = [...RESEARCH_GROUNDING_LINES, RESEARCH_CITATION_LINE].join('\n');
+          system = [...RESEARCH_GROUNDING_LINES, RESEARCH_CITATION_LINE, outputLanguageRule(lang)].join('\n');
           const chunks = retrieveTopK(subtask.goal, grounding);
           const groundingText = chunks.length ? formatChunks(chunks) : grounding;
           if (historyContext) {
@@ -137,19 +145,19 @@ export async function runExpert(
           output = await callDeepSeek({ system, user, temperature });
         }
       } else {
-        system = RESEARCH_SYSTEM;
+        system = [RESEARCH_SYSTEM, outputLanguageRule(lang)].join('\n');
         if (historyContext) {
           user += `\n历史任务参考（过往同类任务的成果，可借鉴其结构与事实，不要照搬）：\n${historyContext}`;
         }
         output = await callDeepSeek({ system, user, temperature });
       }
     } else if (subtask.agent === 'writer') {
-      system = WRITER_SYSTEM;
+      system = [WRITER_SYSTEM, outputLanguageRule(lang)].join('\n');
       temperature = 0.7;
       if (researchContext) user += `\n调研结果：\n${researchContext}`;
       output = await callDeepSeek({ system, user, temperature });
     } else {
-      system = CODER_SYSTEM;
+      system = [CODER_SYSTEM, outputLanguageRule(lang)].join('\n');
       temperature = 0.2;
       output = await callDeepSeek({ system, user, temperature });
     }

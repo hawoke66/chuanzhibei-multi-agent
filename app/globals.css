@@ -18,6 +18,10 @@
   --ok: #8fc9a8;
   --warn: #d3b283;
   --danger: #e09393;
+  /* 场景卡三档深色底：同一亮度区间，只换色相 */
+  --tint-blue: #0b1424;
+  --tint-violet: #141026;
+  --tint-teal: #07191a;
 }
 
 @theme inline {
@@ -174,7 +178,7 @@ html {
    ============================================================ */
 .bg-galaxy {
   position: fixed;
-  inset: -6%;
+  inset: -8%;
   z-index: 0;
   pointer-events: none;
   background-image: url("/starry-background.jpg");
@@ -278,7 +282,7 @@ html {
   position: absolute;
   inset: 0 auto 0 0;
   width: 40%;
-  background: linear-gradient(100deg, transparent 0%, rgb(169 155 245 / 45%) 50%, transparent 100%);
+  background: linear-gradient(100deg, transparent 0%, rgb(255 255 255 / 60%) 50%, transparent 100%);
   opacity: 0;
   transform: translateX(-140%) skewX(-14deg);
   transition:
@@ -485,4 +489,43 @@ html {
 .md-view hr {
   margin: 1.5rem 0;
   border-color: var(--line);
+}
+
+
+/* 场景卡三档深色底 */
+.tint-blue {
+  background-color: var(--tint-blue);
+}
+
+.tint-violet {
+  background-color: var(--tint-violet);
+}
+
+.tint-teal {
+  background-color: var(--tint-teal);
+}
+
+/* 修订对比：新增 / 删除 / 未改 */
+.diff-added {
+  color: var(--ok);
+  background-color: rgb(143 201 168 / 12%);
+  border-radius: 2px;
+}
+
+.diff-removed {
+  color: var(--danger);
+  background-color: rgb(224 147 147 / 12%);
+  border-radius: 2px;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.diff-same {
+  color: var(--ink-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheen::after {
+    display: none;
+  }
 }

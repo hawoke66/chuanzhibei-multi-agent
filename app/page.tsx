@@ -1,7 +1,8 @@
 ﻿'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { extractFileText, FileImportError, REFERENCE_CHAR_LIMIT } from '../lib/import-file';
+import { extractFileText, FileImportError, isImageFile, REFERENCE_CHAR_LIMIT } from '../lib/import-file';
+import { ocrImage } from '../lib/ocr-client';
 import { keywordScore } from '../lib/retrieve';
 import {
   AGENT_IDS,
@@ -15,7 +16,16 @@ import {
   type AgentStatus,
   type Lang,
 } from './copy';
-import type { ExpertResult, HistoryItem, QualityOutcome, Subtask } from './types';
+import type {
+  Attachment,
+  ExpertResult,
+  HistoryItem,
+  QualityOutcome,
+  SourcesState,
+  Subtask,
+  ToolTrace,
+  WebSource,
+} from './types';
 import { copyText, countCharacters } from './format';
 import {
   DEFAULT_PLUGIN_STATE,
@@ -81,6 +91,28 @@ function findRelevantHistory(task: string, items: HistoryItem[]): HistoryItem | 
   return bestScore > 0 ? best : null;
 }
 
+interface SpeechRecognitionLikeEvent {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+}
+
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((event: SpeechRecognitionLikeEvent) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+let attachmentSeq = 0;
+
+function nextAttachmentId(kind: 'img' | 'file'): string {
+  attachmentSeq += 1;
+  return `${kind}-${attachmentSeq}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 export default function Home() {
   const [lang, setLang] = useState<Lang>('zh');
   const [task, setTask] = useState('');
@@ -99,7 +131,6 @@ export default function Home() {
   const [selectedHistory, setSelectedHistory] = useState<HistoryItem | null>(null);
   const [copiedFinal, setCopiedFinal] = useState(false);
   const [reference, setReference] = useState('');
-  const [importing, setImporting] = useState(false);
   const [importNotice, setImportNotice] = useState('');
   const [selectedExperts, setSelectedExperts] = useState<Record<AgentName, boolean>>({
     research: true,
@@ -110,6 +141,18 @@ export default function Home() {
   const [importedManifests, setImportedManifests] = useState<PluginManifest[]>([]);
   const [pluginImportError, setPluginImportError] = useState('');
   const [pluginsLoaded, setPluginsLoaded] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [parsingCount, setParsingCount] = useState(0);
+  const [searchEnabled, setSearchEnabled] = useState(true);
+  const [sources, setSources] = useState<WebSource[]>([]);
+  const [sourcesState, setSourcesState] = useState<SourcesState>({ enabled: true, configured: true });
+  const [tools, setTools] = useState<ToolTrace[]>([]);
+  const [retryCounts, setRetryCounts] = useState<Record<string, number>>({});
+  const [retryingAgent, setRetryingAgent] = useState<AgentName | null>(null);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const recognitionRef = useRef<{ stop: () => void } | null>(null);
+  const attachmentsRef = useRef<Attachment[]>([]);
 
   const startedAtRef = useRef(0);
   const activeTaskRef = useRef('');
@@ -177,6 +220,20 @@ export default function Home() {
   }, [importedManifests, pluginsLoaded]);
 
   useEffect(() => {
+    const scope = window as unknown as {
+      SpeechRecognition?: unknown;
+      webkitSpeechRecognition?: unknown;
+    };
+    const supported = Boolean(scope.SpeechRecognition ?? scope.webkitSpeechRecognition);
+    const frame = requestAnimationFrame(() => setVoiceSupported(supported));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+
+  useEffect(() => {
     return () => {
       if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
     };
@@ -216,9 +273,9 @@ export default function Home() {
       setPlan(p.plan || '');
       setSubtasks(p.subtasks || []);
     } else if (ev.type === 'done') {
-      const p = ev.plan as { plan: string; subtasks: Subtask[] };
-      setPlan(p.plan || '');
-      setSubtasks(p.subtasks || []);
+      const p = ev.plan as { plan: string; subtasks: Subtask[] } | undefined;
+      if (p?.plan) setPlan(p.plan);
+      if (p?.subtasks?.length) setSubtasks(p.subtasks);
       setResults((ev.results as ExpertResult[]) || []);
       const nextQuality = (ev.quality as QualityOutcome) || null;
       setQuality(nextQuality);
@@ -241,6 +298,26 @@ export default function Home() {
         };
         setHistory((prev) => [record, ...prev].slice(0, HISTORY_LIMIT));
       }
+    } else if (ev.type === 'tool') {
+      setTools((prev) => [
+        ...prev,
+        {
+          name: typeof ev.name === 'string' ? ev.name : 'tool',
+          via: ev.via === 'mcp' ? 'mcp' : ev.via === 'local' ? 'local' : 'none',
+          ok: ev.ok === true,
+          count: typeof ev.count === 'number' ? ev.count : 0,
+          detail: typeof ev.detail === 'string' ? ev.detail : '',
+          error: typeof ev.error === 'string' ? ev.error : undefined,
+        },
+      ]);
+    } else if (ev.type === 'sources') {
+      setSources(Array.isArray(ev.sources) ? (ev.sources as WebSource[]) : []);
+      setSourcesState({ enabled: ev.enabled !== false, configured: ev.configured !== false });
+    } else if (ev.type === 'expert') {
+      const result = ev.result as ExpertResult | undefined;
+      if (result) {
+        setResults((prev) => [...prev.filter((item) => item.subtaskId !== result.subtaskId), result]);
+      }
     } else if (ev.type === 'error') {
       setError(typeof ev.error === 'string' ? ev.error : t('errorTitle'));
       setElapsed(Number(((Date.now() - startedAtRef.current) / 1000).toFixed(1)));
@@ -248,30 +325,105 @@ export default function Home() {
     }
   }
 
-  async function handleImportFile(file: File) {
-    setImporting(true);
+  /** 上传文件：图片走 OCR，PDF / Word / 文本走本地解析；解析结果进参考资料，可删除。 */
+  async function handleAddFiles(files: File[]) {
     setImportNotice('');
-    try {
-      const text = await extractFileText(file);
-      setReference(text);
-      if (Array.from(text).length > REFERENCE_CHAR_LIMIT) {
-        setImportNotice(t('importTooLong'));
+    setParsingCount((count) => count + files.length);
+    for (const file of files) {
+      try {
+        if (isImageFile(file)) {
+          const outcome = await ocrImage(file, lang);
+          if (!outcome.text.trim()) {
+            setImportNotice(t(outcome.error ? 'ocrFailed' : 'uploadNoText'));
+            continue;
+          }
+          const thumb = await readThumb(file);
+          const attachment: Attachment = {
+            id: nextAttachmentId('img'),
+            name: file.name,
+            chars: Array.from(outcome.text.replace(/\s+/g, '')).length,
+            text: outcome.text,
+            kind: 'image',
+            thumb,
+          };
+          setAttachments((prev) => [...prev, attachment]);
+          continue;
+        }
+        const text = (await extractFileText(file)).trim();
+        if (!text) {
+          setImportNotice(t('uploadNoText'));
+          continue;
+        }
+        const attachment: Attachment = {
+          id: nextAttachmentId('file'),
+          name: file.name,
+          chars: Array.from(text.replace(/\s+/g, '')).length,
+          text,
+          kind: 'file',
+        };
+        setAttachments((prev) => [...prev, attachment]);
+      } catch (error) {
+        const kind = error instanceof FileImportError ? error.kind : 'parse-failed';
+        const key =
+          kind === 'unsupported'
+            ? 'uploadUnsupported'
+            : kind === 'too-large'
+              ? 'uploadTooLarge'
+              : kind === 'no-text'
+                ? 'uploadNoText'
+                : 'uploadParseFailed';
+        setImportNotice(t(key));
       }
-    } catch (e) {
-      const kind = e instanceof FileImportError ? e.kind : 'parse-failed';
-      const key =
-        kind === 'unsupported'
-          ? 'importErrorUnsupported'
-          : kind === 'too-large'
-            ? 'importErrorTooLarge'
-            : kind === 'no-text'
-              ? 'importErrorNoText'
-              : 'importErrorParseFailed';
-      setImportNotice(t(key));
-    } finally {
-      setImporting(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
+    setParsingCount((count) => Math.max(0, count - files.length));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  function removeAttachment(id: string) {
+    setAttachments((prev) => prev.filter((item) => item.id !== id));
+  }
+
+  function readThumb(file: File): Promise<string> {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ''));
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /** 语音输入：Web Speech API，浏览器不支持时按钮不出现。 */
+  function toggleVoice() {
+    if (voiceListening) {
+      recognitionRef.current?.stop();
+      setVoiceListening(false);
+      return;
+    }
+    const scope = window as unknown as {
+      SpeechRecognition?: new () => SpeechRecognitionLike;
+      webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+    };
+    const Ctor = scope.SpeechRecognition ?? scope.webkitSpeechRecognition;
+    if (!Ctor) return;
+    const recognition = new Ctor();
+    recognition.lang = lang === 'en' ? 'en-US' : 'zh-CN';
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onresult = (event: SpeechRecognitionLikeEvent) => {
+      const transcript = Array.from(event.results)
+        .map((item) => item[0]?.transcript ?? '')
+        .join('')
+        .trim();
+      if (transcript) setTask((prev) => (prev ? `${prev} ${transcript}` : transcript));
+    };
+    recognition.onerror = () => {
+      setImportNotice(t('voiceError'));
+      setVoiceListening(false);
+    };
+    recognition.onend = () => setVoiceListening(false);
+    recognitionRef.current = recognition;
+    recognition.start();
+    setVoiceListening(true);
   }
 
   async function handleImportManifest(file: File) {
@@ -311,6 +463,27 @@ export default function Home() {
     setCancelled(true);
   }
 
+  async function consumeStream(res: Response) {
+    if (!res.ok || !res.body) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || t('errorTitle'));
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        handleEvent(JSON.parse(line));
+      }
+    }
+  }
+
   async function executeTask(taskToRun: string, options?: { reference: string; experts: AgentName[] }) {
     const cleanTask = taskToRun.trim();
     if (!cleanTask) {
@@ -324,7 +497,11 @@ export default function Home() {
       setError(t('selectExpert'));
       return;
     }
-    const runReference = (options?.reference ?? reference).trim();
+    const attachmentText = attachmentsRef.current.map((item) => item.text).join('\n\n');
+    const runReference = [options?.reference ?? reference, attachmentText]
+      .filter((item) => item.trim().length > 0)
+      .join('\n\n')
+      .trim();
     if (Array.from(runReference).length > REFERENCE_CHAR_LIMIT) {
       setError(t('importTooLong'));
       return;
@@ -351,37 +528,27 @@ export default function Home() {
     setElapsed(null);
     setResultTask(cleanTask);
     setSelectedHistory(null);
+    setSources([]);
+    setTools([]);
+    setSourcesState({ enabled: searchEnabled, configured: true });
+    setRetryCounts({});
 
     try {
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          mode: 'run',
           task: cleanTask,
           reference: runReference,
           experts: runExperts,
           historyRef,
+          lang,
+          search: searchEnabled,
         }),
         signal: abortRef.current?.signal,
       });
-      if (!res.ok || !res.body) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || t('errorTitle'));
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split('\n');
-        buf = lines.pop() || '';
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          handleEvent(JSON.parse(line));
-        }
-      }
+      await consumeStream(res);
     } catch (e) {
       if (cancelRef.current) {
         // 用户主动取消：不报错误、不重试，状态停在当前阶段
@@ -394,6 +561,50 @@ export default function Home() {
       }
     } finally {
       setLoading(false);
+    }
+  }
+
+  /** 单专家重试：只把失败的那个专家重跑一遍，成功后继续汇总质检。 */
+  async function retryExpert(agent: AgentName) {
+    if (retryingAgent || (retryCounts[agent] ?? 0) >= 2) return;
+    const failed = results.find((item) => item.agent === agent && item.status === 'failed');
+    if (!failed) return;
+    const subtask =
+      subtasks.find((item) => item.id === failed.subtaskId) ?? {
+        id: failed.subtaskId,
+        agent,
+        goal: failed.goal,
+        deliverable: failed.goal,
+      };
+    setRetryCounts((prev) => ({ ...prev, [agent]: (prev[agent] ?? 0) + 1 }));
+    setRetryingAgent(agent);
+    setLoading(true);
+    setError('');
+    try {
+      const combinedReference = [reference, attachmentsRef.current.map((item) => item.text).join('\n\n')]
+        .filter((item) => item.trim().length > 0)
+        .join('\n\n')
+        .trim();
+      const res = await fetch('/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'resume',
+          task: resultTask || task,
+          lang,
+          experts: EXPERT_AGENTS.filter((name) => selectedExperts[name]),
+          retryAgent: agent,
+          retrySubtask: subtask,
+          results,
+          reference: combinedReference,
+        }),
+      });
+      await consumeStream(res);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('errorTitle'));
+    } finally {
+      setLoading(false);
+      setRetryingAgent(null);
     }
   }
 
@@ -524,10 +735,17 @@ export default function Home() {
             setReference(value);
             setImportNotice('');
           }}
-          importNotice={importNotice}
-          importing={importing}
-          onImportFile={handleImportFile}
+          attachments={attachments}
+          onAddFiles={(files) => void handleAddFiles(files)}
+          onRemoveAttachment={removeAttachment}
+          parsingCount={parsingCount}
+          notice={importNotice}
           fileInputRef={fileInputRef}
+          searchEnabled={searchEnabled}
+          onToggleSearch={setSearchEnabled}
+          voiceSupported={voiceSupported}
+          voiceListening={voiceListening}
+          onToggleVoice={toggleVoice}
           selectedExperts={selectedExperts}
           onToggleExpert={(agent, next) => setSelectedExperts((prev) => ({ ...prev, [agent]: next }))}
           loading={loading}
@@ -554,6 +772,9 @@ export default function Home() {
           doneCount={doneAgentCount}
           activeCount={activeAgentCount}
           overallPercent={overallPercent}
+          onRetryExpert={(agent) => void retryExpert(agent)}
+          retryCounts={retryCounts}
+          retryingAgent={retryingAgent}
         />
 
         <Tagline t={t} />
@@ -565,6 +786,7 @@ export default function Home() {
           agentStatus={agentStatus}
           plan={plan}
           subtasks={subtasks}
+          tools={tools}
         />
 
         <Results
@@ -591,6 +813,10 @@ export default function Home() {
           agentLabel={agentLabel}
           statusLabel={statusLabel}
           onStart={scrollToTask}
+          sources={sources}
+          sourcesState={sourcesState}
+          draft={quality?.draft ?? ''}
+          revised={quality?.revised ?? ''}
         />
 
         <HistoryTimeline

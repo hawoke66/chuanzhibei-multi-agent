@@ -229,6 +229,7 @@ export default function DynamicBackground() {
       if (width === 0 || height === 0) return;
       const t = reduced ? 0 : now / 1000;
 
+      const motionScale = width < MOBILE_BREAKPOINT ? 0.5 : 1;
       const targetX = reduced ? 0 : pointer.tx;
       const targetY = reduced ? 0 : pointer.ty;
       pointer.x += (targetX - pointer.x) * 0.07;
@@ -237,8 +238,11 @@ export default function DynamicBackground() {
       const galaxy = galaxyRef.current;
       if (galaxy) {
         const drift = reduced ? 0 : Math.sin(t * 0.05) * 7;
-        const offsetX = reduced ? 0 : pointer.x * 6;
-        const offsetY = reduced ? 0 : -scrollOffset * 0.06 + pointer.y * 5 + drift;
+        const offsetX = reduced ? 0 : pointer.x * 9 * motionScale;
+        // 滚动视差必须夹住：银河层只有视口高 + 外扩，位移过大会把照片底部滑出屏幕，
+        // 页脚那一段就只剩 canvas 星点，看起来像星空断了。
+        const parallaxScroll = Math.min(scrollOffset * 0.09, 96);
+        const offsetY = reduced ? 0 : -parallaxScroll + pointer.y * 7 * motionScale + drift;
         galaxy.style.transform = `translate3d(${offsetX.toFixed(2)}px, ${offsetY.toFixed(2)}px, 0) scale(1.09)`;
       }
 
@@ -277,8 +281,8 @@ export default function DynamicBackground() {
       // 星点
       const span = width + 40;
       for (const s of stars) {
-        const parallaxX = reduced ? 0 : pointer.x * s.depth * 1.7;
-        const parallaxY = reduced ? 0 : pointer.y * s.depth * 1.1 - scrollOffset * 0.015 * s.depth;
+        const parallaxX = reduced ? 0 : pointer.x * s.depth * 2.5 * motionScale;
+        const parallaxY = reduced ? 0 : (pointer.y * s.depth * 2 - Math.min(scrollOffset * 0.02, 24) * s.depth) * motionScale;
         const drift = (s.x + s.drift * t + parallaxX) % span;
         const x = drift < 0 ? drift + span : drift;
         const y = s.y + parallaxY;

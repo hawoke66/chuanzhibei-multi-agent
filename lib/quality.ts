@@ -1,5 +1,6 @@
 import { callDeepSeek, extractJson } from './deepseek';
 import type { ExpertResult } from './experts';
+import { outputLanguageRule, type OutputLang } from './language';
 
 export interface QcBreakdown {
   facts: number;
@@ -24,7 +25,7 @@ export interface QualityOutcome {
 
 const FOOTER = '\n\n——多智能体协作台完成（调度·调研·文案·代码）';
 
-export async function summarize(task: string, results: ExpertResult[]): Promise<string> {
+export async function summarize(task: string, results: ExpertResult[], lang: OutputLang = 'zh'): Promise<string> {
   const parts = results
     .filter((r) => r.status === 'done' && r.output)
     .map((r) => `【${r.agent}】\n${r.output}`)
@@ -37,6 +38,7 @@ export async function summarize(task: string, results: ExpertResult[]): Promise<
       '不扩写、不新增事实。',
       '如果包含代码，完整保留代码块，不要改写代码逻辑。',
       '只输出合成后的文案本身，不要加解释。',
+      outputLanguageRule(lang),
     ].join('\n'),
     user: `原任务：${task}\n\n专家输出：\n${parts}`,
     temperature: 0.3,
@@ -44,7 +46,7 @@ export async function summarize(task: string, results: ExpertResult[]): Promise<
   return output.trim();
 }
 
-export async function checkQuality(task: string, draft: string): Promise<QcResult> {
+export async function checkQuality(task: string, draft: string, lang: OutputLang = 'zh'): Promise<QcResult> {
   const text = await callDeepSeek({
     system: [
       '你是质检官。',
@@ -53,6 +55,7 @@ export async function checkQuality(task: string, draft: string): Promise<QcResul
       'rubric 四项配分：事实准确性 30%、任务契合度 30%、结构完整性 20%、语言质量 20%，四项各打 0-100 分。',
       'score 按四项加权计算并四舍五入；80 分及以上 verdict 为 pass，否则为 fail。',
       'feedback 逐条列出失分项，每项一行："- [项目] 具体问题+位置+改法"；通过时写"符合要求"。',
+      outputLanguageRule(lang),
     ].join('\n'),
     user: `原任务：${task}\n\n待验收成果：\n${draft}`,
     temperature: 0.2,
@@ -84,13 +87,14 @@ export async function checkQuality(task: string, draft: string): Promise<QcResul
   };
 }
 
-export async function revise(task: string, draft: string, feedback: string): Promise<string> {
+export async function revise(task: string, draft: string, feedback: string, lang: OutputLang = 'zh'): Promise<string> {
   const output = await callDeepSeek({
     system: [
       '你是修订官。',
       '只改质检反馈指出的问题，通过部分不动，不重写全文。',
       '逐条响应反馈中的每一个问题，不要遗漏，没问题的部分保持原样。',
       '只输出修订后的全文，不要加解释。',
+      outputLanguageRule(lang),
     ].join('\n'),
     user: `原任务：${task}\n\n质检反馈：${feedback}\n\n待修订稿：\n${draft}`,
     temperature: 0.3,

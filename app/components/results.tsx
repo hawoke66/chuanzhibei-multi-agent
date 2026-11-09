@@ -1,9 +1,10 @@
 ﻿'use client';
 
-import { useEffect, useState } from 'react';
-import { ArrowRight, CaretDown, Copy, Export } from '@phosphor-icons/react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowRight, ArrowsLeftRight, CaretDown, Copy, Export } from '@phosphor-icons/react';
 import type { AgentId, AgentStatus } from '../copy';
-import type { ExpertResult, QcResult } from '../types';
+import type { ExpertResult, QcResult, SourcesState, WebSource } from '../types';
+import { buildDiff, diffStats } from '../../lib/diff';
 import MarkdownView from '../markdown-view';
 import { copyText, countCharacters, formatNumber, formatSeconds } from '../format';
 import { Glyph, Reveal, RiseText, StarDot } from './ui';
@@ -176,6 +177,10 @@ export default function Results({
   agentLabel,
   statusLabel,
   onStart,
+  sources,
+  sourcesState,
+  draft,
+  revised,
 }: {
   t: (key: string) => string;
   hasResult: boolean;
@@ -200,9 +205,17 @@ export default function Results({
   agentLabel: (id: AgentId) => string;
   statusLabel: (status: AgentStatus) => string;
   onStart: () => void;
+  sources: WebSource[];
+  sourcesState: SourcesState;
+  draft: string;
+  revised: string;
 }) {
   const latest = qcHistory.length > 0 ? qcHistory[qcHistory.length - 1] : undefined;
   const [grown, setGrown] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
+  const hasDiff = Boolean(draft && revised && draft !== revised);
+  const diffParts = useMemo(() => (hasDiff && showDiff ? buildDiff(draft, revised) : []), [hasDiff, showDiff, draft, revised]);
+  const diffStat = useMemo(() => diffStats(diffParts), [diffParts]);
 
   useEffect(() => {
     if (!hasResult) return;
@@ -243,6 +256,12 @@ export default function Results({
                 <Glyph as={Export} size={16} />
                 {t('exportMarkdown')}
               </button>
+              {hasDiff && (
+                <button type="button" onClick={() => setShowDiff((value) => !value)} aria-expanded={showDiff} className={TEXT_BUTTON}>
+                  <Glyph as={ArrowsLeftRight} size={16} />
+                  {showDiff ? t('diffHide') : t('diffToggle')}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -355,9 +374,73 @@ export default function Results({
               </div>
             </dl>
 
+            <div className="mt-4">
+              <p className="caption-5 text-ink-3">
+                {!sourcesState.enabled
+                  ? t('sourcesOff')
+                  : sources.length > 0
+                    ? t('sourcesTitle').replace('{n}', String(sources.length))
+                    : sourcesState.configured
+                      ? t('sourcesEmpty')
+                      : t('sourcesNoKey')}
+              </p>
+              {sources.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {sources.map((source, index) => (
+                    <li key={source.url} className="flex items-baseline gap-3">
+                      <span className="caption-5 shrink-0 font-mono text-ink-3 tabular-nums">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <a
+                        href={source.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="caption-5 min-w-0 flex-1 truncate text-ink-2 underline-offset-4 transition-colors duration-300 ease-out-soft hover:text-ink hover:underline"
+                      >
+                        {source.title || source.url}
+                      </a>
+                      {source.site && <span className="caption-5 hidden shrink-0 text-ink-3 sm:inline">{source.site}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
             <div className="doc-in mt-8">
               <MarkdownView text={final} copyLabel={t('copyCode')} copiedLabel={t('copied')} />
             </div>
+
+            {showDiff && (
+              <div className="mt-6 rounded-xl border border-line p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="caption-5 text-ink-3">
+                    {diffParts.some((part) => part.kind !== 'same')
+                      ? t('diffNote')
+                          .replace('{added}', String(diffStat.added))
+                          .replace('{removed}', String(diffStat.removed))
+                      : t('diffEmpty')}
+                  </p>
+                  <div className="caption-5 flex items-center gap-3 text-ink-3">
+                    <span>
+                      <span className="diff-added rounded px-1">+</span> {t('diffAdded')}
+                    </span>
+                    <span>
+                      <span className="diff-removed rounded px-1">-</span> {t('diffRemoved')}
+                    </span>
+                  </div>
+                </div>
+                <p className="body-6 mt-3 whitespace-pre-wrap leading-7">
+                  {diffParts.map((part, index) => (
+                    <span
+                      key={`${part.kind}-${index}`}
+                      className={part.kind === 'added' ? 'diff-added' : part.kind === 'removed' ? 'diff-removed' : 'diff-same'}
+                    >
+                      {part.value}
+                    </span>
+                  ))}
+                </p>
+              </div>
+            )}
 
             {finalFailed && (
               <p className="caption-2 mt-6 border-t border-line pt-4 text-warn">

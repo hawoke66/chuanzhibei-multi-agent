@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { AgentId, AgentStatus } from '../copy';
+import type { ToolTrace } from '../types';
 import { Reveal, RiseText, StarDot } from './ui';
 
 /* 任务流：一条五节点的横向轨道 + 左侧计划、右侧阶段状态。
@@ -18,6 +19,7 @@ export default function Flow({
   agentStatus,
   plan,
   subtasks,
+  tools,
 }: {
   t: (key: string) => string;
   agentLabel: (id: AgentId) => string;
@@ -25,6 +27,7 @@ export default function Flow({
   agentStatus: StatusMap;
   plan: string;
   subtasks: { id: string; agent: 'research' | 'writer' | 'coder'; goal: string; deliverable: string }[];
+  tools: ToolTrace[];
 }) {
   const steps = [t('aiStep1'), t('aiStep2'), t('aiStep3'), t('aiStep4'), t('aiStep5')];
   const railRef = useRef<HTMLOListElement | null>(null);
@@ -148,6 +151,24 @@ export default function Flow({
               );
             })}
           </ul>
+          {tools.length > 0 && (
+            <div className="mt-6">
+              <h3 className="caption-4 text-ink-3">{t('searchTool')}</h3>
+              <ul className="mt-2">
+                {tools.map((tool, index) => (
+                  <li key={`${tool.name}-${index}`} className="border-t border-line py-2">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="caption-5 font-mono text-ink-2">{tool.name}</span>
+                      <span className="caption-5 text-ink-3">
+                        {tool.via === 'mcp' ? t('toolViaMcp') : t('toolViaLocal')}
+                      </span>
+                    </div>
+                    <p className="caption-5 mt-1 text-pretty text-ink-3">{tool.detail}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <p className="caption-5 mt-6 text-pretty text-ink-3">{t('flowNotes')}</p>
         </Reveal>
       </div>

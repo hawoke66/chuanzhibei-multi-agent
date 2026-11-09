@@ -1,13 +1,14 @@
-﻿'use client';
+'use client';
 
 import type { RefObject } from 'react';
-import { ArrowUpRight } from '@phosphor-icons/react';
+import { Microphone, Paperclip, Sparkle } from '@phosphor-icons/react';
 import type { AgentId, AgentName, Lang } from '../copy';
 import type { TaskTemplate } from '../../lib/task-templates';
-import { Glyph, Reveal } from './ui';
+import type { Attachment } from '../types';
+import { Glyph, Reveal, Switch } from './ui';
 
 /* 任务输入：一块悬浮的宽幅面板，不做卡片。
-   面板本身只有一层表面色，分隔靠 hairline，动作靠文字与一块实心按钮。 */
+   本轮新增：联网搜索开关、上传文件（PDF / Word / 图片 OCR）、语音输入、已解析资料列表。 */
 
 export default function TaskPanel({
   t,
@@ -19,10 +20,17 @@ export default function TaskPanel({
   onTaskChange,
   reference,
   onReferenceChange,
-  importNotice,
-  importing,
-  onImportFile,
+  attachments,
+  onAddFiles,
+  onRemoveAttachment,
+  parsingCount,
+  notice,
   fileInputRef,
+  searchEnabled,
+  onToggleSearch,
+  voiceSupported,
+  voiceListening,
+  onToggleVoice,
   selectedExperts,
   onToggleExpert,
   loading,
@@ -44,10 +52,17 @@ export default function TaskPanel({
   onTaskChange: (value: string) => void;
   reference: string;
   onReferenceChange: (value: string) => void;
-  importNotice: string;
-  importing: boolean;
-  onImportFile: (file: File) => void;
+  attachments: Attachment[];
+  onAddFiles: (files: File[]) => void;
+  onRemoveAttachment: (id: string) => void;
+  parsingCount: number;
+  notice: string;
   fileInputRef: RefObject<HTMLInputElement | null>;
+  searchEnabled: boolean;
+  onToggleSearch: (next: boolean) => void;
+  voiceSupported: boolean;
+  voiceListening: boolean;
+  onToggleVoice: () => void;
   selectedExperts: Record<AgentName, boolean>;
   onToggleExpert: (agent: AgentName, next: boolean) => void;
   loading: boolean;
@@ -85,6 +100,10 @@ export default function TaskPanel({
                   ))}
                 </div>
               )}
+              <div className="flex flex-wrap items-center gap-2">
+                <Switch checked={searchEnabled} onChange={onToggleSearch} label={t('searchToggleAria')} />
+                <span className="caption-4 text-ink-2">{t('searchToggle')}</span>
+              </div>
               <div className="flex flex-wrap items-center gap-3">
                 <span className="caption-5 text-ink-3">{t('samplesLabel')}</span>
                 {examples.map((example, index) => (
@@ -102,45 +121,97 @@ export default function TaskPanel({
             </div>
           </div>
 
-          <label htmlFor="task-input" className="sr-only">
-            {t('taskLabel')}
-          </label>
-          <textarea
-            id="task-input"
-            value={task}
-            onChange={(event) => onTaskChange(event.target.value)}
-            rows={2}
-            placeholder={t('taskPlaceholder')}
-            className="title-2 mt-5 w-full resize-none bg-transparent text-ink outline-none placeholder:text-ink-3"
-          />
+          <div className="mt-5 flex flex-wrap items-start justify-between gap-4 border-b border-line pb-2">
+            <label htmlFor="task-input" className="sr-only">
+              {t('taskLabel')}
+            </label>
+            <textarea
+              id="task-input"
+              value={task}
+              onChange={(event) => onTaskChange(event.target.value)}
+              rows={2}
+              placeholder={t('taskPlaceholder')}
+              className="title-2 min-w-0 flex-1 resize-none bg-transparent text-ink outline-none placeholder:text-ink-3"
+            />
+            {voiceSupported && (
+              <button
+                type="button"
+                onClick={onToggleVoice}
+                aria-pressed={voiceListening}
+                aria-label={voiceListening ? t('voiceStop') : t('voiceStart')}
+                className={`caption-4 inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition-colors duration-300 ease-out-soft ${
+                  voiceListening
+                    ? 'border-accent/50 bg-accent/15 text-accent'
+                    : 'border-line text-ink-2 hover:border-line-2 hover:bg-raised hover:text-ink'
+                }`}
+              >
+                <Glyph as={Microphone} size={16} />
+                {voiceListening ? t('voiceListening') : t('voiceStart')}
+              </button>
+            )}
+          </div>
 
-          <div className="mt-6 border-t border-line pt-5">
+          <div className="mt-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <label htmlFor="reference-input" className="caption-4 text-ink-3">
                 {t('reference')}
               </label>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={loading || importing}
-                className="caption-4 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-ink-2 transition-colors duration-300 ease-out-soft hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {importing ? t('importParsing') : t('importFile')}
-                <Glyph as={ArrowUpRight} size={16} />
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".txt,.md,.markdown,.pdf,text/plain,text/markdown,application/pdf"
-                className="hidden"
-                aria-hidden="true"
-                tabIndex={-1}
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) onImportFile(file);
-                }}
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  title={t('uploadHint')}
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={loading || parsingCount > 0}
+                  className="caption-4 inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-ink-2 transition-colors duration-300 ease-out-soft hover:border-line-2 hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Glyph as={Paperclip} size={16} />
+                  {parsingCount > 0 ? `${t('uploadParsing')} ${parsingCount}` : t('uploadFile')}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.docx,.txt,.md,.markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  aria-hidden="true"
+                  tabIndex={-1}
+                  onChange={(event) => {
+                    const files = Array.from(event.target.files ?? []);
+                    if (files.length > 0) onAddFiles(files);
+                    event.target.value = '';
+                  }}
+                />
+              </div>
             </div>
+
+
+            {attachments.length > 0 && (
+              <ul className="mt-3 space-y-1.5">
+                {attachments.map((item) => (
+                  <li key={item.id} className="flex items-center gap-3 text-ink-2">
+                    {item.kind === 'image' && item.thumb ? (
+                      // 用户自己的图片，只在本地预览，不上传
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={item.thumb} alt={item.name} className="h-8 w-8 rounded border border-line object-cover" />
+                    ) : (
+                      <Glyph as={Sparkle} size={16} className="text-ink-3" />
+                    )}
+                    <span className="caption-2 min-w-0 flex-1 truncate">{item.name}</span>
+                    <span className="caption-5 shrink-0 font-mono text-ink-3 tabular-nums">
+                      {item.chars} {t('attachmentChars')}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveAttachment(item.id)}
+                      className="caption-5 shrink-0 rounded px-1.5 py-0.5 text-ink-3 transition-colors duration-300 ease-out-soft hover:bg-raised hover:text-danger"
+                    >
+                      {t('attachmentRemove')}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
             <textarea
               id="reference-input"
               value={reference}
@@ -148,38 +219,41 @@ export default function TaskPanel({
               rows={2}
               disabled={loading}
               placeholder={t('referencePlaceholder')}
-              className="body-6 mt-2 w-full resize-none bg-transparent text-ink-2 outline-none placeholder:text-ink-3 disabled:opacity-60"
+              className="body-6 mt-3 w-full resize-none bg-transparent text-ink-2 outline-none placeholder:text-ink-3 disabled:opacity-60"
             />
-            {importNotice && <p className="caption-5 mt-2 text-warn">{importNotice}</p>}
+            {notice && <p className="caption-5 mt-2 text-warn">{notice}</p>}
           </div>
 
-          <div className="mt-6 flex flex-wrap items-end justify-between gap-6 border-t border-line pt-5">
-            <div>
-              <p className="caption-5 text-ink-3">{t('expertsLabel')}</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {expertIds.map((agent) => {
-                  const active = selectedExperts[agent];
-                  return (
-                    <label
-                      key={agent}
-                      className={`lift caption-2 flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 ${
-                        active
-                          ? 'border-line-2 bg-raised text-ink'
-                          : 'border-line text-ink-2 hover:border-line-2 hover:text-ink'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={active}
-                        disabled={loading}
-                        onChange={(event) => onToggleExpert(agent, event.target.checked)}
-                        className="h-4 w-4 accent-accent"
-                      />
-                      {agentLabel(agent)}
-                    </label>
-                  );
-                })}
+          <div className="mt-5 flex flex-wrap items-end justify-between gap-6 border-t border-line pt-4">
+            <div className="space-y-4">
+              <div>
+                <p className="caption-5 text-ink-3">{t('expertsLabel')}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {expertIds.map((agent) => {
+                    const active = selectedExperts[agent];
+                    return (
+                      <label
+                        key={agent}
+                        className={`lift caption-2 flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 ${
+                          active
+                            ? 'border-line-2 bg-raised text-ink'
+                            : 'border-line text-ink-2 hover:border-line-2 hover:text-ink'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={active}
+                          disabled={loading}
+                          onChange={(event) => onToggleExpert(agent, event.target.checked)}
+                          className="h-4 w-4 accent-accent"
+                        />
+                        {agentLabel(agent)}
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
+
             </div>
 
             <div className="flex flex-wrap items-center gap-3">

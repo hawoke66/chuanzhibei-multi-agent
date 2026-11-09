@@ -59,7 +59,7 @@ export default function PluginCenter({
         {BUILTIN_PLUGINS.map(({ id, manifest }) => {
           const enabled = state[id];
           return (
-            <div key={id} className="grid gap-4 border-b border-line py-6 lg:grid-cols-12 lg:gap-8">
+            <div key={id} className="lift grid gap-4 border-b border-line py-6 lg:grid-cols-12 lg:gap-8">
               <div className="lg:col-span-4">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                   <Glyph as={PuzzlePiece} size={16} className="text-ink-3" />
@@ -135,7 +135,7 @@ export default function PluginCenter({
             ) : (
               <ul>
                 {imported.map((manifest) => (
-                  <li key={manifest.id} className="flex items-start justify-between gap-4 border-t border-line py-4">
+                  <li key={manifest.id} className="lift flex items-start justify-between gap-4 border-t border-line py-4">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <p className="title-4 text-ink">{localizedName(manifest, lang)}</p>

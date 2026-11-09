@@ -1,7 +1,7 @@
 'use client';
 
 import { Code, MagnifyingGlass, NotePencil, ShareNetwork } from '@phosphor-icons/react';
-import type { AgentId, AgentStatus } from '../copy';
+import type { AgentId, AgentName, AgentStatus } from '../copy';
 import { Glyph, Reveal, StarDot } from './ui';
 
 /* 专家区：调度官一条宽幅，三位专家三条错落的行。
@@ -23,6 +23,9 @@ export default function Experts({
   doneCount,
   activeCount,
   overallPercent,
+  onRetryExpert,
+  retryCounts,
+  retryingAgent,
 }: {
   t: (key: string) => string;
   agentLabel: (id: AgentId) => string;
@@ -31,6 +34,9 @@ export default function Experts({
   doneCount: number;
   activeCount: number;
   overallPercent: number;
+  onRetryExpert?: (agent: AgentName) => void;
+  retryCounts?: Record<string, number>;
+  retryingAgent?: AgentName | null;
 }) {
   const dispatcher = agentStatus.dispatcher;
 
@@ -85,6 +91,22 @@ export default function Experts({
                 </div>
                 {state.detail && (
                   <p className="caption-5 text-ink-3 lg:col-span-2 lg:col-start-11 lg:text-right">{state.detail}</p>
+                )}
+                {state.status === 'failed' && onRetryExpert && (
+                  <div className="lg:col-span-12 lg:flex lg:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => onRetryExpert(row.id as AgentName)}
+                      disabled={Boolean(retryingAgent) || (retryCounts?.[row.id] ?? 0) >= 2}
+                      className="caption-5 rounded border border-line-2 px-2 py-0.5 text-ink-2 transition-colors duration-300 ease-out-soft hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {retryingAgent === row.id
+                        ? t('retryExpertBusy')
+                        : (retryCounts?.[row.id] ?? 0) >= 2
+                          ? t('retryExpertLimit')
+                          : `${t('retryExpert')} (${retryCounts?.[row.id] ?? 0}/2)`}
+                    </button>
+                  </div>
                 )}
               </div>
             );
