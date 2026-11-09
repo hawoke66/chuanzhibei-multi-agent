@@ -95,13 +95,18 @@ export default function SiteNav({
             open ? 'opacity-100' : 'opacity-0'
           }`}
         />
-        <nav className="relative flex h-full flex-col justify-center px-8">
+        <nav
+          className={`relative flex h-full flex-col justify-center px-8 transition-opacity duration-300 ease-out-soft ${
+            open ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
           <div className="flex items-center justify-between">
             <span className="caption-4 text-ink-3">{t('navHome')}</span>
             <button
               type="button"
               onClick={() => setOpen(false)}
               aria-label={t('navClose')}
+              tabIndex={open ? 0 : -1}
               className="rounded-full p-2 text-ink-2 transition-colors duration-300 ease-out-soft hover:bg-raised hover:text-ink"
             >
               <Glyph as={X} size={18} />

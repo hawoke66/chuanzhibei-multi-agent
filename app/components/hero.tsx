@@ -1,91 +1,130 @@
-﻿'use client';
+'use client';
 
 import { ArrowRight } from '@phosphor-icons/react';
 import type { AgentId } from '../copy';
-import { Glyph, StarDot } from './ui';
+import { Glyph, StarDot, type StarState } from './ui';
 
-/* 首屏：左边一句话定位 + 两个动作，右边协作链路图。
-   链路图是产品的真实结构（调度拆活、三位专家并行、汇总结稿要过质检），不是装饰插画。 */
+/* 首屏：左边一句话定位 + 两个动作，右边协作链路星座图。
+   链路图是产品的真实结构（调度拆活、三位专家并行、汇总成稿要过质检），不是装饰插画。
+   节点用与专家区同一套四角星状态点：调度已完成、调研进行中、另外两位与质检等待中。 */
 
-const NODES: { id: AgentId; x: number; y: number; r: number }[] = [
-  { id: 'dispatcher', x: 200, y: 46, r: 5.5 },
-  { id: 'research', x: 74, y: 152, r: 4 },
-  { id: 'writer', x: 200, y: 152, r: 4 },
-  { id: 'coder', x: 326, y: 152, r: 4 },
-  { id: 'qc', x: 200, y: 258, r: 5 },
-];
+const VIEW_W = 800;
+const VIEW_H = 500;
 
-const LINKS: [number, number][] = [
-  [0, 1],
-  [0, 2],
-  [0, 3],
-  [1, 4],
-  [2, 4],
-  [3, 4],
-];
-
-function CoordinationMap({ t, agentLabel }: { t: (key: string) => string; agentLabel: (id: AgentId) => string }) {
-  return (
-    <div>
-      <div className="flex items-baseline justify-between border-b border-line pb-3">
-        <p className="caption-4 text-ink-3">{t('heroMapTitle')}</p>
-        <p className="caption-5 font-mono text-ink-3 tabular-nums">{t('heroMapMeta')}</p>
-      </div>
-      <svg viewBox="0 0 400 300" className="mt-4 w-full" role="img" aria-label={t('heroMapTitle')}>
-        {LINKS.map(([from, to]) => (
-          <line
-            key={`${from}-${to}`}
-            x1={NODES[from].x}
-            y1={NODES[from].y}
-            x2={NODES[to].x}
-            y2={NODES[to].y}
-            stroke="currentColor"
-            className="text-line-2"
-            strokeWidth="1"
-          />
-        ))}
-
-        {[
-          [36, 26],
-          [372, 74],
-          [22, 214],
-          [382, 208],
-          [128, 40],
-          [286, 274],
-        ].map(([cx, cy], index) => (
-          <circle key={`faint-${index}`} cx={cx} cy={cy} r={index % 2 === 0 ? 1 : 1.4} className="fill-ink-3" opacity="0.45" />
-        ))}
-
-        {NODES.map((node, index) => (
-          <g key={node.id}>
-            {index === 0 || index === 4 ? (
-              <StarDotPath x={node.x} y={node.y} radius={node.r} />
-            ) : (
-              <circle cx={node.x} cy={node.y} r={node.r} className="fill-ink-2" />
-            )}
-            <text
-              x={node.x}
-              y={node.y + (index === 4 ? 24 : -14)}
-              textAnchor="middle"
-              className="fill-ink-2"
-              fontSize="12"
-            >
-              {agentLabel(node.id)}
-            </text>
-          </g>
-        ))}
-      </svg>
-    </div>
-  );
+interface DiagramNode {
+  id: AgentId;
+  x: number;
+  y: number;
+  state: StarState;
+  size: 14 | 16 | 20;
 }
 
-function StarDotPath({ x, y, radius }: { x: number; y: number; radius: number }) {
-  const points = [0, 1, 2, 3, 4, 5, 6, 7].map((step) => {
-    const angle = (step / 8) * Math.PI * 2 - Math.PI / 2;
-    const reach = step % 2 === 0 ? radius * 2.1 : radius * 0.75;
-    return `${(x + Math.cos(angle) * reach).toFixed(2)},${(y + Math.sin(angle) * reach).toFixed(2)}`;
-  });
-  return <polygon points={points.join(' ')} className="fill-ink" />;
+const NODES: DiagramNode[] = [
+  { id: 'dispatcher', x: 400, y: 66, state: 'done', size: 20 },
+  { id: 'research', x: 132, y: 252, state: 'running', size: 16 },
+  { id: 'writer', x: 400, y: 252, state: 'waiting', size: 16 },
+  { id: 'coder', x: 668, y: 252, state: 'waiting', size: 16 },
+  { id: 'qc', x: 400, y: 432, state: 'waiting', size: 20 },
+];
+
+const EDGES: { from: number; to: number; pending: boolean }[] = [
+  { from: 0, to: 1, pending: false },
+  { from: 0, to: 2, pending: false },
+  { from: 0, to: 3, pending: false },
+  { from: 1, to: 4, pending: true },
+  { from: 2, to: 4, pending: true },
+  { from: 3, to: 4, pending: true },
+];
+
+/** 连线两端各留一段空隙，避免压住星点与名字。 */
+function edgePoints(a: DiagramNode, b: DiagramNode, gap: number) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const ux = dx / length;
+  const uy = dy / length;
+  return {
+    x1: a.x + ux * gap,
+    y1: a.y + uy * gap,
+    x2: b.x - ux * gap,
+    y2: b.y - uy * gap,
+  };
+}
+
+function CoordinationMap({
+  t,
+  agentLabel,
+}: {
+  t: (key: string) => string;
+  agentLabel: (id: AgentId) => string;
+}) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-4 border-b border-line pb-3">
+        <p className="caption-4 text-ink-2">{t('heroMapTitle')}</p>
+        <p className="caption-4 text-ink-2 tabular-nums">{t('heroMapMeta')}</p>
+      </div>
+
+      <div
+        className="relative mt-6 aspect-[2/1] w-full"
+        role="img"
+        aria-label={`${t('heroMapTitle')}，${t('heroMapMeta')}`}
+      >
+        <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} className="absolute inset-0 h-full w-full" aria-hidden="true">
+          {EDGES.map((edge) => {
+            const point = edgePoints(NODES[edge.from], NODES[edge.to], 26);
+            return (
+              <line
+                key={`${edge.from}-${edge.to}`}
+                x1={point.x1}
+                y1={point.y1}
+                x2={point.x2}
+                y2={point.y2}
+                stroke="currentColor"
+                strokeOpacity={edge.pending ? 0.26 : 0.46}
+                strokeWidth={edge.pending ? 0.9 : 1.4}
+                strokeDasharray={edge.pending ? '5 8' : undefined}
+                className={edge.pending ? 'text-ink-3' : 'text-ink-2'}
+              />
+            );
+          })}
+
+          {[
+            [70, 46],
+            [736, 92],
+            [58, 388],
+            [742, 404],
+            [252, 60],
+            [552, 452],
+          ].map(([cx, cy], index) => (
+            <circle
+              key={`faint-${index}`}
+              cx={cx}
+              cy={cy}
+              r={index % 2 === 0 ? 1.6 : 2.2}
+              className="fill-ink-3"
+              opacity="0.4"
+            />
+          ))}
+        </svg>
+
+        {NODES.map((node) => (
+          <div
+            key={node.id}
+            className="absolute"
+            style={{ left: `${(node.x / VIEW_W) * 100}%`, top: `${(node.y / VIEW_H) * 100}%` }}
+          >
+            <div className="-translate-x-1/2 -translate-y-1/2">
+              <StarDot state={node.state} size={node.size} />
+            </div>
+            <p className="hero-node-label absolute left-1/2 top-4 hidden -translate-x-1/2 whitespace-nowrap caption-4 text-ink-2 sm:block">
+              {agentLabel(node.id)}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export default function Hero({
@@ -98,38 +137,35 @@ export default function Hero({
   onStart: () => void;
 }) {
   return (
-    <section className="relative mx-auto flex min-h-dvh w-full max-w-7xl items-center px-6 pb-28 pt-32 lg:px-8">
-      <div className="grid w-full grid-cols-1 items-center gap-16 lg:grid-cols-12 lg:gap-8">
+    <section className="relative mb-8 flex min-h-dvh w-full flex-col justify-center px-6 py-12 lg:mb-0 lg:block lg:min-h-0 lg:px-8 lg:pb-24 lg:pt-24">
+      <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-12 lg:grid-cols-12 lg:gap-8">
         <div className="lg:col-span-6">
-          <p className="caption-4 flex items-center gap-2 text-ink-3">
-            <StarDot state="done" size={10} />
-            {t('heroKicker')}
-          </p>
+          <p className="caption-4 text-ink-3">{t('heroKicker')}</p>
           <h1 className="mt-6 max-w-[680px] text-pretty text-ink heading-4 sm:heading-3 lg:heading-2">
             {t('heroTitleLine1')}
             <br />
             {t('heroTitleLine2')}
           </h1>
-          <p className="body-3 mt-6 max-w-[560px] text-pretty text-ink-2">{t('heroSub')}</p>
+          <p className="body-3 mt-6 max-w-[560px] text-pretty leading-7 text-ink-2">{t('heroSub')}</p>
 
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <button
               type="button"
               onClick={onStart}
-              className="button-md inline-flex items-center gap-2 rounded-lg bg-ink px-4 py-2 text-void transition-[background-color,transform] duration-300 ease-out-soft hover:bg-white active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              className="button-md inline-flex items-center gap-2 whitespace-nowrap rounded-lg bg-ink px-4 py-2 text-void transition-[background-color,transform] duration-300 ease-out-soft hover:bg-white active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               {t('heroCtaPrimary')}
               <Glyph as={ArrowRight} size={16} />
             </button>
             <a
               href="#flow"
-              className="button-md rounded-lg px-2 py-2 text-ink-2 underline-offset-4 transition-colors duration-300 ease-out-soft hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              className="button-md whitespace-nowrap rounded-lg px-2 py-2 text-ink-2 underline-offset-4 transition-colors duration-300 ease-out-soft hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               {t('heroCtaSecondary')}
             </a>
           </div>
 
-          <p className="caption-5 mt-8 font-mono text-ink-3">{t('heroCaption')}</p>
+          <p className="caption-5 mt-6 font-mono text-ink-3">{t('heroCaption')}</p>
         </div>
 
         <div className="lg:col-span-6 lg:col-start-7">

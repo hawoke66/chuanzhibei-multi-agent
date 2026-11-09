@@ -165,36 +165,44 @@ export default function DynamicBackground() {
       );
     }
 
-    function drawAsteroid(t: number) {
-      // 左下角一颗小行星：暗面 + 一圈边缘光 + 两个坑
-      const radius = Math.min(width, height) * 0.022;
-      const cx = radius * 2.4 + t * 0.35;
-      const cy = height - radius * 2.2;
+    function drawAsteroid() {
+      // 左下角一颗小行星：暗面 + 一圈边缘光 + 两个坑。
+      // 只出现在首屏左下的空档里，不被任务输入面板压住；窄屏不画。
+      if (width < MOBILE_BREAKPOINT) return;
+      const radius = Math.min(width, height) * 0.016;
+      const cx = radius * 3.2;
+      const cy = height * 0.86;
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(-0.35);
       ctx.beginPath();
       for (let i = 0; i <= 12; i += 1) {
         const angle = (i / 12) * Math.PI * 2;
-        const wobble = 1 + (i % 3 === 0 ? 0.06 : -0.03);
+        const wobble = 1 + (i % 3 === 0 ? 0.07 : -0.035);
         const px = Math.cos(angle) * radius * wobble;
         const py = Math.sin(angle) * radius * wobble;
         if (i === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       }
       ctx.closePath();
-      ctx.fillStyle = 'rgba(8, 11, 20, 0.92)';
+      ctx.fillStyle = 'rgba(16, 22, 36, 0.96)';
       ctx.fill();
-      ctx.strokeStyle = 'rgba(198, 212, 255, 0.28)';
-      ctx.lineWidth = 0.8;
+      ctx.strokeStyle = 'rgba(198, 212, 255, 0.4)';
+      ctx.lineWidth = 0.9;
+      ctx.stroke();
+      // 朝向光的一侧补一条内缘高光，让它读起来是块石头而不是一个圈
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * 0.82, Math.PI * 1.05, Math.PI * 1.75);
+      ctx.strokeStyle = 'rgba(198, 212, 255, 0.22)';
+      ctx.lineWidth = 1.6;
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(-radius * 0.3, -radius * 0.25, radius * 0.22, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(198, 212, 255, 0.07)';
+      ctx.arc(-radius * 0.28, -radius * 0.2, radius * 0.24, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(198, 212, 255, 0.08)';
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(radius * 0.32, radius * 0.18, radius * 0.15, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(198, 212, 255, 0.05)';
+      ctx.arc(radius * 0.3, radius * 0.22, radius * 0.16, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(198, 212, 255, 0.06)';
       ctx.fill();
       ctx.restore();
     }
@@ -259,7 +267,7 @@ export default function DynamicBackground() {
         ctx.fill();
       }
 
-      drawAsteroid(t);
+      drawAsteroid();
 
       // 流星：右上角起，往左下划，只出现一瞬
       if (!reduced) {
