@@ -529,3 +529,10 @@ html {
     display: none;
   }
 }
+
+
+/* 首屏中段的三行大字标语：行距从 1.0 / 1.11 放到 1.28，只作用于标语区。
+   放在工具类之后（不在 Tailwind 的 layered utilities 里），所以能盖过 heading-* 的 line-height。 */
+.tagline-lines {
+  line-height: 1.28;
+}
