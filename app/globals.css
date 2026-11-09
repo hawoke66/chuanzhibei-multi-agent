@@ -1,56 +1,201 @@
 @import "tailwindcss";
 
+/* ============================================================
+   观测舱色板
+   一套往夜蓝 tint 的中性色阶：表面、分隔线、文字都从这里取，
+   不另造近似值。强调色只留一支浅紫（观测灯），其余语义色只表态。
+   ============================================================ */
 :root {
-  --background: #050816;
-  --foreground: #eef2ff;
+  --void: #05070f;
+  --surface: #0a0e1a;
+  --raised: #111827;
+  --line: rgb(233 238 255 / 8%);
+  --line-2: rgb(233 238 255 / 14%);
+  --ink: #e9edfa;
+  --ink-2: #a7b0c8;
+  --ink-3: #6b7590;
+  --accent: #a99bf5;
+  --ok: #8fc9a8;
+  --warn: #d3b283;
+  --danger: #e09393;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-void: var(--void);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+
+  --font-sans: var(--font-geist-sans), "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Source Han Sans SC", "Noto Sans SC", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "Cascadia Mono", monospace;
+
+  /* 全站唯一一条缓动曲线 */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Background: the starry photo lives on the fixed .bg-base layer (slow
-   Ken Burns pan/zoom in CSS, see app/dynamic-background.tsx). A light
-   canvas layer above it twinkles ≤150 dim stars and fires one meteor
-   every 15-30s; both stay behind the content (main is z-10). */
 body {
-  background-color: #050816;
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--void);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* 底图缓动层：30 秒一个完整往返，alternate 平滑倒回。
-   z-index 用 0 而非 -1：负数层级在 body 背景不传播的边缘情况下
-   可能被盖住，0 则永远位于内容层（z-10）之下、之上无遮挡。 */
-.bg-base {
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* ============================================================
+   命名文本样式（skill B1）
+   每个元素只挂一个样式，不在 JSX 里东拼西凑字号字重。
+   ============================================================ */
+@utility heading-1 {
+  font-size: 3.75rem;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+@utility heading-2 {
+  font-size: 3rem;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+@utility heading-3 {
+  font-size: 2.25rem;
+  line-height: 2.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+@utility heading-4 {
+  font-size: 1.875rem;
+  line-height: 2.25rem;
+  font-weight: 600;
+}
+@utility heading-5 {
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-weight: 600;
+}
+@utility heading-6 {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+}
+@utility title-1 {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 500;
+}
+@utility title-2 {
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+  font-weight: 500;
+}
+@utility title-3 {
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 500;
+}
+@utility title-4 {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+}
+@utility body-2 {
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 500;
+}
+@utility body-3 {
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 400;
+}
+@utility body-5 {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+}
+@utility body-6 {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 400;
+}
+@utility caption-1 {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+}
+@utility caption-2 {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 400;
+}
+@utility caption-4 {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
+}
+@utility caption-5 {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 400;
+}
+@utility button-md {
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 600;
+}
+@utility button-sm {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+}
+
+/* ============================================================
+   背景：银河照片压成安静的底噪，星星/连线/小行星/流星由 canvas 画
+   背景面本身是纯色，这里只有图片层与粒子层。
+   ============================================================ */
+.bg-galaxy {
   position: fixed;
-  inset: -4%;
+  inset: -6%;
   z-index: 0;
+  pointer-events: none;
   background-image: url("/starry-background.jpg");
+  background-position: center 42%;
   background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+  filter: saturate(0.4) brightness(0.4) contrast(1.08);
+  opacity: 0.85;
   will-change: transform;
-  animation: kenBurns 30s ease-in-out infinite alternate;
+  animation: galaxyDrift 96s var(--ease-out-soft) infinite alternate;
 }
 
-@keyframes kenBurns {
-  0% {
-    transform: scale(1.05) translate(2%, 1.5%);
+@keyframes galaxyDrift {
+  from {
+    transform: scale(1.06) translate3d(0.6%, 0.4%, 0);
   }
-  50% {
-    transform: scale(1.15) translate(-2%, -1.5%);
-  }
-  100% {
-    transform: scale(1.08) translate(1%, -3%);
+  to {
+    transform: scale(1.12) translate3d(-0.8%, -0.6%, 0);
   }
 }
 
-/* 星星 / 流星 canvas 层：不挡内容、不响应鼠标 */
-.bg-canvas {
+.bg-stars {
   position: fixed;
   inset: 0;
   z-index: 0;
@@ -58,81 +203,130 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bg-base {
+  .bg-galaxy {
     animation: none;
   }
 }
 
-/* 最终成果 Markdown 渲染（MarkdownView 组件） */
+/* ============================================================
+   滚动显现：每区进入视口上浮 32px + 淡入，只播一次
+   ============================================================ */
+.reveal {
+  opacity: 0;
+  transform: translateY(32px);
+  transition:
+    opacity 700ms var(--ease-out-soft),
+    transform 700ms var(--ease-out-soft);
+}
+
+.reveal[data-shown="true"] {
+  opacity: 1;
+  transform: none;
+}
+
+.word {
+  opacity: 0.3;
+  transition: opacity 500ms var(--ease-out-soft);
+}
+
+.word[data-lit="true"] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .word {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* ============================================================
+   最终成果：文档式长卷（MarkdownView）
+   ============================================================ */
 .md-view {
+  color: var(--ink-2);
+  font-size: 1rem;
   line-height: 1.75;
-  color: var(--foreground);
   word-break: break-word;
 }
+
 .md-view h1,
 .md-view h2,
 .md-view h3,
 .md-view h4 {
-  margin: 1em 0 0.5em;
+  margin: 2rem 0 0.75rem;
+  color: var(--ink);
   font-weight: 600;
-  color: #fff;
 }
+
 .md-view h1 {
-  font-size: 1.35rem;
+  font-size: 1.5rem;
+  line-height: 2rem;
 }
+
 .md-view h2 {
-  font-size: 1.15rem;
+  font-size: 1.25rem;
+  line-height: 1.75rem;
 }
-.md-view h3 {
-  font-size: 1.05rem;
+
+.md-view h3,
+.md-view h4 {
+  font-size: 1.125rem;
+  line-height: 1.75rem;
 }
+
+.md-view > :first-child {
+  margin-top: 0;
+}
+
 .md-view p {
-  margin: 0.6em 0;
+  margin: 0.75rem 0;
 }
+
 .md-view ul,
 .md-view ol {
-  margin: 0.6em 0;
-  padding-left: 1.4em;
+  margin: 0.75rem 0;
+  padding-left: 1.25rem;
 }
+
 .md-view ul {
   list-style: disc;
 }
+
 .md-view ol {
   list-style: decimal;
 }
+
 .md-view li {
-  margin: 0.25em 0;
+  margin: 0.375rem 0;
 }
-.md-view blockquote {
-  margin: 0.8em 0;
-  border-left: 3px solid rgba(167, 139, 250, 0.5);
-  padding-left: 0.9em;
-  color: rgba(199, 210, 254, 0.9);
-}
-.md-view a {
-  color: #a5b4fc;
-  text-decoration: underline;
-}
+
 .md-view strong {
+  color: var(--ink);
   font-weight: 600;
-  color: #fff;
 }
+
+.md-view blockquote {
+  margin: 1rem 0;
+  border-left: 1px solid var(--line-2);
+  padding-left: 1rem;
+  color: var(--ink-3);
+}
+
+.md-view a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-view code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+}
+
 .md-view hr {
-  margin: 1.2em 0;
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.fade-in {
-  animation: fadeIn 0.4s ease both;
+  margin: 1.5rem 0;
+  border-color: var(--line);
 }

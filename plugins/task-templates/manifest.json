@@ -1,0 +1,17 @@
+{
+  "id": "task-templates",
+  "name": "任务模板",
+  "version": "1.2.0",
+  "author": "蜂群小队",
+  "description": "把三种常用任务一次填进输入框并直接派发，省掉每次重写任务描述。",
+  "capabilities": ["读取内置任务模板", "填充任务输入框", "触发现有任务派发流程"],
+  "permissions": ["读写本页任务输入", "调用已注册的任务派发工具"],
+  "locales": {
+    "en": {
+      "name": "Task templates",
+      "description": "Fill the task input with one of three common tasks and send it in a single click.",
+      "capabilities": ["Read built in templates", "Fill the task input", "Trigger the existing dispatch flow"],
+      "permissions": ["Read and write the task input", "Call the registered dispatch tool"]
+    }
+  }
+}

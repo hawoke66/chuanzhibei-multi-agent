@@ -1,51 +1,43 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef } from 'react';
 
-// ===== 动效可调参数（全部集中于此，微调只改这里）=====
-// 星星数量：桌面 500 / 移动端（宽度 <768px）250；帧率不足自动减半，保底 125
-const STAR_COUNT_DESKTOP = 500;
-const STAR_COUNT_MOBILE = 250;
-const MOBILE_BREAKPOINT = 768;
-const MIN_STARS = 125;
-const MAX_HALVINGS = 2;
-const FPS_CHECK_FRAMES = 120;
-const FPS_THRESHOLD = 28;
-// 星星外观：半径 / 基准亮度 / 亮星比例与光晕
-const STAR_RADIUS_MIN = 0.8;
-const STAR_RADIUS_MAX = 2.5;
-const STAR_ALPHA_MIN = 0.35;
-const STAR_ALPHA_MAX = 0.85;
-const STAR_BRIGHT_RATIO = 0.25;
-const STAR_GLOW_RADIUS_TIMES = 3.5;
-const STAR_GLOW_ALPHA = 0.2;
-// 星星闪烁：速度与幅度（深度 0.75 表示最暗时降到基准亮度的 25%）
-const STAR_TWINKLE_SPEED_MIN = 0.5;
-const STAR_TWINKLE_SPEED_MAX = 1.6;
-const STAR_TWINKLE_DEPTH = 0.75;
-// 流星：间隔 / 速度 / 寿命 / 拖尾长度 / 亮度
-const METEOR_MIN_INTERVAL_MS = 8_000;
-const METEOR_MAX_INTERVAL_MS = 15_000;
-const METEOR_SPEED_MIN = 430;
-const METEOR_SPEED_MAX = 690;
-const METEOR_LIFE_MIN = 0.9;
-const METEOR_LIFE_MAX = 1.4;
-const METEOR_LEN_MIN = 140;
-const METEOR_LEN_MAX = 220;
-const METEOR_ALPHA = 1.0;
-const METEOR_WIDTH = 2;
+/* ============================================================
+   动态星空（背景层，不属于任何交互）
+   分层星点 + 斜向银河带 + 三组星座连线 + 左下小行星 + 右上流星。
+   只画像素，不碰 top/left/width/height；减少动效时只画一帧静态星空。
+   ============================================================ */
 
-const STAR_COLORS = ['210, 220, 255', '225, 210, 255', '255, 255, 255'];
+const MAX_DPR = 2;
+const MOBILE_BREAKPOINT = 768;
+const BAND_ANGLE = (-28 * Math.PI) / 180;
+
+const STAR_TINTS = ['210, 222, 255', '226, 214, 255', '255, 255, 255'] as const;
+const LINE_RGB = '198, 212, 255';
+
+// 流星：每 14 到 26 秒一颗，从右上往左下
+const METEOR_MIN_MS = 14_000;
+const METEOR_MAX_MS = 26_000;
 
 interface Star {
   x: number;
   y: number;
   r: number;
-  baseAlpha: number;
+  base: number;
   phase: number;
   speed: number;
-  color: string;
+  tint: number;
+  drift: number;
   glow: boolean;
+}
+
+interface BandDot {
+  x: number;
+  y: number;
+  r: number;
+  base: number;
+  phase: number;
+  speed: number;
 }
 
 interface Meteor {
@@ -54,182 +46,329 @@ interface Meteor {
   vx: number;
   vy: number;
   life: number;
-  maxLife: number;
+  max: number;
   len: number;
 }
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+function rand(min: number, max: number): number {
+  return min + Math.random() * (max - min);
+}
+
+// 四组归一化星座骨架（相对屏幕，只用来画连线，不带任何界面含义）
+const CONSTELLATION_PATTERNS: number[][][] = [
+  [
+    [0.1, 0.16],
+    [0.16, 0.22],
+    [0.13, 0.3],
+    [0.21, 0.26],
+    [0.19, 0.34],
+  ],
+  [
+    [0.78, 0.1],
+    [0.84, 0.16],
+    [0.81, 0.24],
+  ],
+  [
+    [0.62, 0.68],
+    [0.68, 0.72],
+    [0.66, 0.79],
+  ],
+];
 
 export default function DynamicBackground() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
-    // 别名带非空类型：提升的 function 声明不会继承外层收窄
+    if (!canvas) return;
+    const context = canvas.getContext('2d');
+    if (!context) return;
     const cv: HTMLCanvasElement = canvas;
-    const context: CanvasRenderingContext2D = ctx;
+    const ctx: CanvasRenderingContext2D = context;
 
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let reduced = motionQuery.matches;
 
     let width = 0;
     let height = 0;
     let stars: Star[] = [];
-    let raf = 0;
-    let running = false;
-    let lastTime = 0;
+    let band: BandDot[] = [];
+    let constellations: Point[][] = [];
     let meteor: Meteor | null = null;
     let nextMeteorAt = 0;
-    let frameCount = 0;
-    let fpsWindowStart = 0;
-    let halvings = 0;
+    let raf = 0;
+    let running = false;
+    let resizeTimer: number | null = null;
 
-    function buildStars(count: number) {
-      stars = Array.from({ length: count }, () => ({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        r: STAR_RADIUS_MIN + Math.random() * (STAR_RADIUS_MAX - STAR_RADIUS_MIN),
-        baseAlpha: STAR_ALPHA_MIN + Math.random() * (STAR_ALPHA_MAX - STAR_ALPHA_MIN),
-        phase: Math.random() * Math.PI * 2,
-        speed: STAR_TWINKLE_SPEED_MIN + Math.random() * (STAR_TWINKLE_SPEED_MAX - STAR_TWINKLE_SPEED_MIN),
-        color: STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)],
-        glow: Math.random() < STAR_BRIGHT_RATIO,
-      }));
-    }
+    function build() {
+      const mobile = width < MOBILE_BREAKPOINT;
+      stars = [];
 
-    function resize() {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      width = window.innerWidth;
-      height = window.innerHeight;
-      cv.width = Math.max(1, Math.round(width * dpr));
-      cv.height = Math.max(1, Math.round(height * dpr));
-      context.setTransform(dpr, 0, 0, dpr, 0, 0);
-      buildStars(stars.length || (width < MOBILE_BREAKPOINT ? STAR_COUNT_MOBILE : STAR_COUNT_DESKTOP));
-    }
-
-    function spawnMeteor() {
-      const speed = METEOR_SPEED_MIN + Math.random() * (METEOR_SPEED_MAX - METEOR_SPEED_MIN);
-      meteor = {
-        x: width * (0.25 + Math.random() * 0.65),
-        y: height * (0.05 + Math.random() * 0.3),
-        vx: -speed * (0.75 + Math.random() * 0.25),
-        vy: speed * (0.55 + Math.random() * 0.3),
-        life: 0,
-        maxLife: METEOR_LIFE_MIN + Math.random() * (METEOR_LIFE_MAX - METEOR_LIFE_MIN),
-        len: METEOR_LEN_MIN + Math.random() * (METEOR_LEN_MAX - METEOR_LEN_MIN),
+      const layer = (
+        count: number,
+        rMin: number,
+        rMax: number,
+        aMin: number,
+        aMax: number,
+        drift: number,
+        glowRatio: number,
+      ) => {
+        for (let i = 0; i < count; i += 1) {
+          stars.push({
+            x: Math.random() * width,
+            y: Math.random() * height,
+            r: rand(rMin, rMax),
+            base: rand(aMin, aMax),
+            phase: Math.random() * Math.PI * 2,
+            speed: rand(0.35, 1.4),
+            tint: Math.floor(Math.random() * STAR_TINTS.length),
+            drift,
+            glow: Math.random() < glowRatio,
+          });
+        }
       };
+
+      // 远、中、近三层：越近越大越亮，漂移越快
+      layer(mobile ? 170 : 300, 0.4, 0.9, 0.14, 0.38, 1.2, 0);
+      layer(mobile ? 90 : 150, 0.9, 1.5, 0.3, 0.62, 2.1, 0.12);
+      layer(mobile ? 24 : 38, 1.5, 2.3, 0.5, 0.9, 3.2, 0.45);
+
+      // 银河带：沿斜线撒的密集微星，不用渐变色块
+      band = [];
+      const bandCount = mobile ? 360 : 720;
+      const cx = width * 0.56;
+      const cy = height * 0.4;
+      const span = Math.hypot(width, height) * 0.8;
+      const bandWidth = mobile ? 90 : 150;
+      for (let i = 0; i < bandCount; i += 1) {
+        const along = rand(-0.5, 0.5);
+        const gauss = (Math.random() + Math.random() + Math.random() + Math.random() - 2) / 2;
+        const across = gauss * bandWidth;
+        band.push({
+          x: cx + Math.cos(BAND_ANGLE) * along * span - Math.sin(BAND_ANGLE) * across,
+          y: cy + Math.sin(BAND_ANGLE) * along * span + Math.cos(BAND_ANGLE) * across,
+          r: rand(0.3, 1),
+          base: rand(0.05, 0.2),
+          phase: Math.random() * Math.PI * 2,
+          speed: rand(0.2, 0.6),
+        });
+      }
+
+      const unit = Math.min(width, height);
+      constellations = CONSTELLATION_PATTERNS.map((group) =>
+        group.map(([nx, ny]) => ({ x: nx * width, y: ny * height - unit * 0.02 })),
+      );
+    }
+
+    function drawAsteroid(t: number) {
+      // 左下角一颗小行星：暗面 + 一圈边缘光 + 两个坑
+      const radius = Math.min(width, height) * 0.022;
+      const cx = radius * 2.4 + t * 0.35;
+      const cy = height - radius * 2.2;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(-0.35);
+      ctx.beginPath();
+      for (let i = 0; i <= 12; i += 1) {
+        const angle = (i / 12) * Math.PI * 2;
+        const wobble = 1 + (i % 3 === 0 ? 0.06 : -0.03);
+        const px = Math.cos(angle) * radius * wobble;
+        const py = Math.sin(angle) * radius * wobble;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(8, 11, 20, 0.92)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(198, 212, 255, 0.28)';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(-radius * 0.3, -radius * 0.25, radius * 0.22, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(198, 212, 255, 0.07)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(radius * 0.32, radius * 0.18, radius * 0.15, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(198, 212, 255, 0.05)';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function draw(now: number) {
+      if (width === 0 || height === 0) return;
+      const t = reduced ? 0 : now / 1000;
+      ctx.clearRect(0, 0, width, height);
+
+      // 银河带
+      for (const d of band) {
+        const twinkle = 0.55 + 0.45 * Math.sin(d.phase + t * d.speed);
+        const alpha = d.base * twinkle;
+        if (alpha <= 0.012) continue;
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(214, 224, 255, ${alpha.toFixed(3)})`;
+        ctx.fill();
+      }
+
+      // 星座连线
+      ctx.strokeStyle = `rgba(${LINE_RGB}, 0.15)`;
+      ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      for (const group of constellations) {
+        group.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+        ctx.moveTo(group[group.length - 1].x, group[group.length - 1].y);
+        ctx.lineTo(group[0].x, group[0].y);
+      }
+      ctx.stroke();
+      for (const group of constellations) {
+        for (const p of group) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 1.3, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${LINE_RGB}, 0.5)`;
+          ctx.fill();
+        }
+      }
+
+      // 星点
+      const span = width + 40;
+      for (const s of stars) {
+        const drift = (s.x + s.drift * t) % span;
+        const x = drift < 0 ? drift + span : drift;
+        const twinkle = 0.5 + 0.5 * Math.sin(s.phase + t * s.speed);
+        const alpha = s.base * (0.45 + 0.55 * twinkle);
+        if (alpha <= 0.015) continue;
+        const tint = STAR_TINTS[s.tint];
+        if (s.glow) {
+          const halo = s.r * 4;
+          const gradient = ctx.createRadialGradient(x, s.y, 0, x, s.y, halo);
+          gradient.addColorStop(0, `rgba(${tint}, ${(alpha * 0.16).toFixed(3)})`);
+          gradient.addColorStop(1, `rgba(${tint}, 0)`);
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(x, s.y, halo, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.beginPath();
+        ctx.arc(x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${tint}, ${alpha.toFixed(3)})`;
+        ctx.fill();
+      }
+
+      drawAsteroid(t);
+
+      // 流星：右上角起，往左下划，只出现一瞬
+      if (!reduced) {
+        if (!meteor && now >= nextMeteorAt) {
+          const speed = rand(520, 760);
+          meteor = {
+            x: width * rand(0.62, 0.95),
+            y: height * rand(0.04, 0.18),
+            vx: -speed * rand(0.72, 0.9),
+            vy: speed * rand(0.45, 0.62),
+            life: 0,
+            max: rand(0.9, 1.4),
+            len: rand(120, 200),
+          };
+        }
+        if (meteor) {
+          meteor.life += 1 / 60;
+          const progress = meteor.life / meteor.max;
+          if (progress >= 1) {
+            meteor = null;
+            nextMeteorAt = now + rand(METEOR_MIN_MS, METEOR_MAX_MS);
+          } else {
+            meteor.x += meteor.vx * (1 / 60);
+            meteor.y += meteor.vy * (1 / 60);
+            const alpha = Math.sin(Math.PI * progress);
+            const length = Math.hypot(meteor.vx, meteor.vy);
+            const tailX = meteor.x - (meteor.vx / length) * meteor.len;
+            const tailY = meteor.y - (meteor.vy / length) * meteor.len;
+            const trail = ctx.createLinearGradient(meteor.x, meteor.y, tailX, tailY);
+            trail.addColorStop(0, `rgba(236, 241, 255, ${(alpha * 0.9).toFixed(3)})`);
+            trail.addColorStop(1, 'rgba(236, 241, 255, 0)');
+            ctx.strokeStyle = trail;
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.moveTo(meteor.x, meteor.y);
+            ctx.lineTo(tailX, tailY);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(meteor.x, meteor.y, 1.6, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(236, 241, 255, ${alpha.toFixed(3)})`;
+            ctx.fill();
+          }
+        }
+      }
     }
 
     function frame(now: number) {
       if (!running) return;
-      const dt = Math.min((now - lastTime) / 1000, 0.1);
-      lastTime = now;
-      context.clearRect(0, 0, width, height);
-
-      for (const s of stars) {
-        s.phase += s.speed * dt;
-        const wave = 0.5 + 0.5 * Math.sin(s.phase);
-        const alpha = s.baseAlpha * (1 - STAR_TWINKLE_DEPTH + STAR_TWINKLE_DEPTH * wave);
-        if (alpha <= 0.02) continue;
-        if (s.glow) {
-          const glowR = s.r * STAR_GLOW_RADIUS_TIMES;
-          const g = context.createRadialGradient(s.x, s.y, 0, s.x, s.y, glowR);
-          g.addColorStop(0, `rgba(${s.color}, ${(alpha * STAR_GLOW_ALPHA).toFixed(3)})`);
-          g.addColorStop(1, `rgba(${s.color}, 0)`);
-          context.fillStyle = g;
-          context.beginPath();
-          context.arc(s.x, s.y, glowR, 0, Math.PI * 2);
-          context.fill();
-        }
-        context.beginPath();
-        context.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-        context.fillStyle = `rgba(${s.color}, ${Math.min(1, alpha).toFixed(3)})`;
-        context.fill();
-      }
-
-      if (!meteor && now >= nextMeteorAt) spawnMeteor();
-      if (meteor) {
-        meteor.life += dt;
-        const t = meteor.life / meteor.maxLife;
-        if (t >= 1) {
-          meteor = null;
-          nextMeteorAt = now + METEOR_MIN_INTERVAL_MS + Math.random() * (METEOR_MAX_INTERVAL_MS - METEOR_MIN_INTERVAL_MS);
-        } else {
-          meteor.x += meteor.vx * dt;
-          meteor.y += meteor.vy * dt;
-          const alpha = Math.sin(Math.PI * t) * METEOR_ALPHA;
-          const speed = Math.hypot(meteor.vx, meteor.vy);
-          const tx = meteor.x - (meteor.vx / speed) * meteor.len;
-          const ty = meteor.y - (meteor.vy / speed) * meteor.len;
-          const grad = context.createLinearGradient(meteor.x, meteor.y, tx, ty);
-          grad.addColorStop(0, `rgba(240, 244, 255, ${alpha.toFixed(3)})`);
-          grad.addColorStop(1, 'rgba(240, 244, 255, 0)');
-          context.strokeStyle = grad;
-          context.lineWidth = METEOR_WIDTH;
-          context.beginPath();
-          context.moveTo(meteor.x, meteor.y);
-          context.lineTo(tx, ty);
-          context.stroke();
-          context.beginPath();
-          context.arc(meteor.x, meteor.y, METEOR_WIDTH, 0, Math.PI * 2);
-          context.fillStyle = `rgba(240, 244, 255, ${alpha.toFixed(3)})`;
-          context.fill();
-        }
-      }
-
-      frameCount += 1;
-      if (frameCount >= FPS_CHECK_FRAMES) {
-        const fps = frameCount / ((now - fpsWindowStart) / 1000);
-        if (fps < FPS_THRESHOLD && halvings < MAX_HALVINGS && stars.length > MIN_STARS) {
-          buildStars(Math.max(Math.floor(stars.length / 2), MIN_STARS));
-          halvings += 1;
-        }
-        frameCount = 0;
-        fpsWindowStart = now;
-      }
-
+      draw(now);
       raf = requestAnimationFrame(frame);
     }
 
     function start() {
-      if (running) return;
+      if (running || reduced) return;
       running = true;
-      lastTime = performance.now();
-      fpsWindowStart = lastTime;
-      nextMeteorAt = lastTime + METEOR_MIN_INTERVAL_MS + Math.random() * (METEOR_MAX_INTERVAL_MS - METEOR_MIN_INTERVAL_MS);
+      nextMeteorAt = performance.now() + rand(METEOR_MIN_MS, METEOR_MAX_MS);
       raf = requestAnimationFrame(frame);
     }
 
     function stop() {
       running = false;
       cancelAnimationFrame(raf);
-      context.clearRect(0, 0, width, height);
     }
 
-    function onReducedMotionChange() {
-      if (reducedMotion.matches) stop();
-      else start();
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+      width = window.innerWidth;
+      height = window.innerHeight;
+      cv.width = Math.max(1, Math.round(width * dpr));
+      cv.height = Math.max(1, Math.round(height * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      build();
+      if (reduced) draw(0);
+    }
+
+    function onResize() {
+      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(resize, 160);
+    }
+
+    function onMotionChange() {
+      reduced = motionQuery.matches;
+      if (reduced) {
+        stop();
+        draw(0);
+      } else {
+        start();
+      }
     }
 
     resize();
-    window.addEventListener('resize', resize);
-    if (reducedMotion.addEventListener) {
-      reducedMotion.addEventListener('change', onReducedMotionChange);
-    }
-    if (!reducedMotion.matches) start();
+    if (reduced) draw(0);
+    else start();
+
+    window.addEventListener('resize', onResize);
+    motionQuery.addEventListener('change', onMotionChange);
 
     return () => {
       stop();
-      window.removeEventListener('resize', resize);
-      if (reducedMotion.removeEventListener) {
-        reducedMotion.removeEventListener('change', onReducedMotionChange);
-      }
+      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
+      window.removeEventListener('resize', onResize);
+      motionQuery.removeEventListener('change', onMotionChange);
     };
   }, []);
 
   return (
     <>
-      <div className="bg-base" aria-hidden="true" />
-      <canvas ref={canvasRef} className="bg-canvas" aria-hidden="true" />
+      <div className="bg-galaxy" aria-hidden="true" />
+      <canvas ref={canvasRef} className="bg-stars" aria-hidden="true" />
     </>
   );
 }

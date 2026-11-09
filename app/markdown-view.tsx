@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 
+/* 最终成果的 Markdown 渲染：代码块自带复制，样式全部走观测舱色板。 */
+
 function CodeBlock({
   code,
   language,
@@ -27,18 +29,18 @@ function CodeBlock({
   }
 
   return (
-    <div className="my-3 overflow-hidden rounded-xl border border-white/10 bg-black/40">
-      <div className="flex items-center justify-between border-b border-white/10 px-3 py-1.5 text-xs text-indigo-200/80">
-        <span>{language || 'code'}</span>
+    <div className="my-4 overflow-hidden rounded-lg bg-void">
+      <div className="flex items-center justify-between border-b border-line px-4 py-2">
+        <span className="caption-5 font-mono text-ink-3">{language || 'text'}</span>
         <button
           type="button"
           onClick={handleCopy}
-          className="rounded-full border border-white/20 bg-white/10 px-2.5 py-0.5 text-indigo-100 transition hover:bg-white/20"
+          className="caption-5 rounded px-2 py-0.5 text-ink-3 transition-colors duration-300 ease-out-soft hover:bg-raised hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           {copied ? copiedLabel : copyLabel}
         </button>
       </div>
-      <pre className="overflow-x-auto p-3 text-sm leading-relaxed text-indigo-50">
+      <pre className="body-6 overflow-x-auto p-4 text-ink-2">
         <code>{code}</code>
       </pre>
     </div>
@@ -72,7 +74,7 @@ export default function MarkdownView({
                 />
               );
             }
-            return <code className="rounded bg-white/10 px-1 py-0.5 text-[0.9em] text-violet-200">{children}</code>;
+            return <code className="rounded bg-raised px-1 py-0.5 text-ink">{children}</code>;
           },
         }}
       >

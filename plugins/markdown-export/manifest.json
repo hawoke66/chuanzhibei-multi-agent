@@ -1,0 +1,17 @@
+{
+  "id": "markdown-export",
+  "name": "成果导出",
+  "version": "1.0.3",
+  "author": "蜂群小队",
+  "description": "任务完成后把成果导出成 Markdown 文件，也可以只复制全文。",
+  "capabilities": ["按任务、质检记录、修订轮数拼装 Markdown", "生成本地文件下载", "复制全文到剪贴板"],
+  "permissions": ["读取当前成果与质检记录", "创建本地文件下载"],
+  "locales": {
+    "en": {
+      "name": "Output export",
+      "description": "Export a finished result as a Markdown file, or copy the full text.",
+      "capabilities": ["Assemble Markdown from task, QA history and revisions", "Trigger a local file download", "Copy the full text"],
+      "permissions": ["Read the current output and QA history", "Create a local file download"]
+    }
+  }
+}

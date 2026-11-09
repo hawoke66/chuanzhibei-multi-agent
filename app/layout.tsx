@@ -14,8 +14,20 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "多智能体协作台",
-  description: "实时观察多智能体协作、执行与交付。",
+  title: "多智能体协作台 · 蜂群小队",
+  description:
+    "一个任务派给调度、调研、文案、代码四个专家并行完成，汇总后质检，满 80 分才交付。",
+  openGraph: {
+    title: "多智能体协作台",
+    description: "让小团队低成本拥有一个 AI 团队",
+    type: "website",
+    locale: "zh_CN",
+  },
+  twitter: {
+    card: "summary",
+    title: "多智能体协作台",
+    description: "让小团队低成本拥有一个 AI 团队",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -24,7 +36,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="zh-CN"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="flex min-h-full flex-col bg-void text-ink">
         <DynamicBackground />
         {children}
       </body>
