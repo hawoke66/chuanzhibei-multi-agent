@@ -13,13 +13,13 @@ const VIEW_W = 900;
 const VIEW_H = 560;
 
 const NODES: { id: AgentId; star: string; x: number; y: number; size: number }[] = [
-  { id: 'dispatcher', star: '天枢', x: 636, y: 84, size: 30 },
-  { id: 'research', star: '天璇', x: 800, y: 150, size: 26 },
-  { id: 'writer', star: '天玑', x: 772, y: 292, size: 26 },
-  { id: 'coder', star: '天权', x: 612, y: 276, size: 26 },
-  { id: 'summarizer', star: '玉衡', x: 452, y: 326, size: 24 },
-  { id: 'qc', star: '开阳', x: 292, y: 386, size: 24 },
-  { id: 'reviser', star: '摇光', x: 140, y: 452, size: 24 },
+  { id: 'dispatcher', star: '天枢', x: 606, y: 112, size: 30 },
+  { id: 'research', star: '天璇', x: 776, y: 92, size: 26 },
+  { id: 'writer', star: '天玑', x: 806, y: 252, size: 26 },
+  { id: 'coder', star: '天权', x: 616, y: 258, size: 26 },
+  { id: 'summarizer', star: '玉衡', x: 462, y: 306, size: 24 },
+  { id: 'qc', star: '开阳', x: 308, y: 372, size: 24 },
+  { id: 'reviser', star: '摇光', x: 152, y: 440, size: 24 },
 ];
 
 // 斗身四条边 + 斗柄三节
@@ -79,7 +79,7 @@ export default function AgentDag({
         })}
       </ol>
 
-      <div className="relative mx-auto mt-2 hidden aspect-[900/560] w-full max-w-[820px] sm:block">
+      <div className="relative mx-auto mt-1 hidden aspect-[900/560] w-full max-w-[760px] sm:block">
         <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} className="absolute inset-0 h-full w-full" aria-hidden="true">
           <defs>
             <linearGradient id="beam-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -110,54 +110,63 @@ export default function AgentDag({
           const state = agentStatus[node.id];
           const inactive = state.status === 'inactive';
           const failed = state.status === 'failed';
+          // 斗身左上角的调度官把文字放到星星上方，避免斗身边缘穿过文字
+          const labelAbove = node.id === 'dispatcher';
+          const labels = (
+            <>
+              <p className="caption-5 mt-1 whitespace-nowrap font-mono text-ink-3">{node.star}</p>
+              <p className="title-4 whitespace-nowrap text-ink">{agentLabel(node.id)}</p>
+              <p className="caption-5 whitespace-nowrap text-ink-3">
+                {inactive ? t('expertInactive') : statusLabel(state.status)}
+              </p>
+            </>
+          );
           return (
             <div
               key={node.id}
               className={`absolute -translate-x-1/2 -translate-y-1/2 text-center ${inactive ? 'opacity-45' : ''}`}
               style={{ left: `${(node.x / VIEW_W) * 100}%`, top: `${(node.y / VIEW_H) * 100}%` }}
             >
-              <div
-                className="star-node relative mx-auto flex items-center justify-center"
-                style={{
-                  width: node.size * 2.2,
-                  height: node.size * 2.2,
-                  animationDuration: `${(2.6 + index * 0.43).toFixed(2)}s`,
-                  animationDelay: `-${(index * 0.71).toFixed(2)}s`,
-                }}
-              >
-                <span
-                  aria-hidden="true"
-                  className="absolute rounded-full"
+              <div className={labelAbove ? 'flex flex-col-reverse items-center' : 'flex flex-col items-center'}>
+                <div
+                  className="star-node relative flex items-center justify-center"
                   style={{
-                    width: node.size * 1.9,
-                    height: node.size * 1.9,
-                    background:
-                      state.status === 'running'
-                        ? 'radial-gradient(circle, rgba(255,255,255,0.55) 0%, rgba(169,155,245,0.32) 34%, transparent 68%)'
-                        : state.status === 'done'
-                          ? 'radial-gradient(circle, rgba(255,255,255,0.42) 0%, rgba(169,155,245,0.22) 34%, transparent 68%)'
-                          : 'radial-gradient(circle, rgba(255,255,255,0.22) 0%, rgba(169,155,245,0.1) 38%, transparent 70%)',
+                    width: node.size * 2.2,
+                    height: node.size * 2.2,
+                    animationDuration: `${(2.6 + index * 0.43).toFixed(2)}s`,
+                    animationDelay: `-${(index * 0.71).toFixed(2)}s`,
                   }}
-                />
-                <svg
-                  viewBox="0 0 24 24"
-                  width={node.size}
-                  height={node.size}
-                  aria-hidden="true"
-                  className="relative"
-                  style={{ opacity: inactive ? 0.5 : 1 }}
                 >
-                  <path
-                    d="M12 0c.5 7.4 4.6 11.5 12 12-7.4.5-11.5 4.6-12 12-.5-7.4-4.6-11.5-12-12C7.4 11.5 11.5 7.4 12 0Z"
-                    fill={failed ? '#ff7a7a' : '#ffffff'}
+                  <span
+                    aria-hidden="true"
+                    className="absolute rounded-full"
+                    style={{
+                      width: node.size * 1.9,
+                      height: node.size * 1.9,
+                      background:
+                        state.status === 'running'
+                          ? 'radial-gradient(circle, rgba(255,255,255,0.55) 0%, rgba(169,155,245,0.32) 34%, transparent 68%)'
+                          : state.status === 'done'
+                            ? 'radial-gradient(circle, rgba(255,255,255,0.42) 0%, rgba(169,155,245,0.22) 34%, transparent 68%)'
+                            : 'radial-gradient(circle, rgba(255,255,255,0.22) 0%, rgba(169,155,245,0.1) 38%, transparent 70%)',
+                    }}
                   />
-                </svg>
+                  <svg
+                    viewBox="0 0 24 24"
+                    width={node.size}
+                    height={node.size}
+                    aria-hidden="true"
+                    className="relative"
+                    style={{ opacity: inactive ? 0.5 : 1 }}
+                  >
+                    <path
+                      d="M12 0c.5 7.4 4.6 11.5 12 12-7.4.5-11.5 4.6-12 12-.5-7.4-4.6-11.5-12-12C7.4 11.5 11.5 7.4 12 0Z"
+                      fill={failed ? '#ff7a7a' : '#ffffff'}
+                    />
+                  </svg>
+                </div>
+                <div className={labelAbove ? 'mb-0.5' : ''}>{labels}</div>
               </div>
-              <p className="caption-5 mt-1 whitespace-nowrap font-mono text-ink-3">{node.star}</p>
-              <p className="title-4 whitespace-nowrap text-ink">{agentLabel(node.id)}</p>
-              <p className="caption-5 whitespace-nowrap text-ink-3">
-                {inactive ? t('expertInactive') : statusLabel(state.status)}
-              </p>
             </div>
           );
         })}

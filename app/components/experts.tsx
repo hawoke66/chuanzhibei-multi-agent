@@ -38,9 +38,9 @@ export default function Experts({
   const expertAgents: AgentName[] = ['research', 'writer', 'coder'];
 
   return (
-    <div className="mt-4 space-y-3">
+    <div className="mt-2 space-y-2.5">
       {ROWS.map((row) => (
-        <div key={row.key} className="flex flex-wrap justify-center gap-3">
+        <div key={row.key} className="flex flex-wrap justify-center gap-2.5">
           {row.ids.map((id) => {
             const state = agentStatus[id];
             const inactive = state.status === 'inactive';
@@ -49,7 +49,7 @@ export default function Experts({
             return (
               <MagicCard
                 key={id}
-                className="w-[228px] shrink-0 px-3 py-2.5"
+                className="w-full px-3 py-2.5 sm:w-[228px] sm:shrink-0"
                 glowColor="169, 155, 245"
               >
                 <div data-status={state.status}>
