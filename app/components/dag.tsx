@@ -1,6 +1,5 @@
 'use client';
 
-import { Star } from '@phosphor-icons/react';
 import type { AgentId, AgentStatus } from '../copy';
 import { AGENT_IDS } from '../copy';
 import { StarDot } from './ui';
@@ -47,14 +46,6 @@ function edgePoints(from: { x: number; y: number }, to: { x: number; y: number }
     y2: to.y - uy * gap,
   };
 }
-
-const STAR_TONE: Record<string, string> = {
-  waiting: 'text-ink-3',
-  running: 'text-accent',
-  done: 'text-ink',
-  failed: 'text-danger',
-  inactive: 'text-ink-3',
-};
 
 export default function AgentDag({
   t,
@@ -115,31 +106,52 @@ export default function AgentDag({
           })}
         </svg>
 
-        {NODES.map((node) => {
+        {NODES.map((node, index) => {
           const state = agentStatus[node.id];
           const inactive = state.status === 'inactive';
+          const failed = state.status === 'failed';
           return (
             <div
               key={node.id}
               className={`absolute -translate-x-1/2 -translate-y-1/2 text-center ${inactive ? 'opacity-45' : ''}`}
               style={{ left: `${(node.x / VIEW_W) * 100}%`, top: `${(node.y / VIEW_H) * 100}%` }}
             >
-              <div className="relative mx-auto flex items-center justify-center" style={{ width: node.size * 2.4, height: node.size * 2.4 }}>
+              <div
+                className="star-node relative mx-auto flex items-center justify-center"
+                style={{
+                  width: node.size * 2.2,
+                  height: node.size * 2.2,
+                  animationDuration: `${(2.6 + index * 0.43).toFixed(2)}s`,
+                  animationDelay: `-${(index * 0.71).toFixed(2)}s`,
+                }}
+              >
                 <span
                   aria-hidden="true"
-                  className={`absolute inset-0 rounded-full blur-xl ${
-                    state.status === 'running'
-                      ? 'bg-accent/60'
-                      : state.status === 'done'
-                        ? 'bg-white/25'
-                        : 'bg-white/10'
-                  }`}
+                  className="absolute rounded-full"
+                  style={{
+                    width: node.size * 1.9,
+                    height: node.size * 1.9,
+                    background:
+                      state.status === 'running'
+                        ? 'radial-gradient(circle, rgba(255,255,255,0.55) 0%, rgba(169,155,245,0.32) 34%, transparent 68%)'
+                        : state.status === 'done'
+                          ? 'radial-gradient(circle, rgba(255,255,255,0.42) 0%, rgba(169,155,245,0.22) 34%, transparent 68%)'
+                          : 'radial-gradient(circle, rgba(255,255,255,0.22) 0%, rgba(169,155,245,0.1) 38%, transparent 70%)',
+                  }}
                 />
-                <Star
-                  size={node.size}
-                  weight="fill"
-                  className={`relative ${STAR_TONE[state.status] ?? 'text-ink-3'}`}
-                />
+                <svg
+                  viewBox="0 0 24 24"
+                  width={node.size}
+                  height={node.size}
+                  aria-hidden="true"
+                  className="relative"
+                  style={{ opacity: inactive ? 0.5 : 1 }}
+                >
+                  <path
+                    d="M12 0c.5 7.4 4.6 11.5 12 12-7.4.5-11.5 4.6-12 12-.5-7.4-4.6-11.5-12-12C7.4 11.5 11.5 7.4 12 0Z"
+                    fill={failed ? '#ff7a7a' : '#ffffff'}
+                  />
+                </svg>
               </div>
               <p className="caption-5 mt-1 whitespace-nowrap font-mono text-ink-3">{node.star}</p>
               <p className="title-4 whitespace-nowrap text-ink">{agentLabel(node.id)}</p>

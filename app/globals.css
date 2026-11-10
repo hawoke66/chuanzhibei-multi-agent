@@ -718,3 +718,29 @@ html {
     opacity: 0;
   }
 }
+
+/* 北斗节点：每颗星独立速率的轻微闪烁 */
+@keyframes nodeTwinkle {
+  0%,
+  100% {
+    opacity: 0.82;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+.star-node {
+  animation-name: nodeTwinkle;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  will-change: opacity, transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .star-node {
+    animation: none;
+  }
+}
