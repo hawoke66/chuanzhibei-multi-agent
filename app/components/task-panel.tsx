@@ -78,9 +78,9 @@ export default function TaskPanel({
   const expertIds: AgentName[] = ['research', 'writer', 'coder'];
 
   return (
-    <section id="task" className="relative z-10 mx-auto -mt-8 w-full max-w-7xl px-6 sm:-mt-12 lg:-mt-20 lg:px-8">
+    <section id="task" className="relative z-10 mt-6 w-full">
       <Reveal>
-        <div className="rounded-2xl bg-surface p-6 transition-shadow duration-300 ease-out-soft focus-within:outline focus-within:outline-1 focus-within:outline-offset-4 focus-within:outline-line-2 lg:p-8">
+        <div className="card p-4 transition-shadow duration-300 ease-out-soft focus-within:outline focus-within:outline-1 focus-within:outline-offset-4 focus-within:outline-line-2 lg:p-5">
           <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-4">
             <p className="caption-4 text-ink-3">{t('taskKicker')}</p>
             <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
@@ -93,7 +93,7 @@ export default function TaskPanel({
                       type="button"
                       onClick={() => onUseTemplate(template)}
                       disabled={loading}
-                      className="lift caption-4 rounded-lg border border-line px-2.5 py-1 text-ink-2 hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                      className="btn-ghost lift"
                     >
                       {template.label[lang]}
                     </button>
@@ -153,16 +153,22 @@ export default function TaskPanel({
 
           <div className="mt-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <label htmlFor="reference-input" className="caption-4 text-ink-3">
-                {t('reference')}
-              </label>
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <label htmlFor="reference-input" className="caption-4 text-ink-3">
+                  {t('reference')}
+                </label>
+                <span className="caption-5 rounded border border-line-2 px-1.5 py-0.5 text-accent">
+                  {t('multimodalLabel')}
+                </span>
+                <span className="caption-5 text-ink-3">{t('multimodalHint')}</span>
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   title={t('uploadHint')}
                   onClick={() => fileInputRef.current?.click()}
                   disabled={loading || parsingCount > 0}
-                  className="caption-4 inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-ink-2 transition-colors duration-300 ease-out-soft hover:border-line-2 hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                  className="btn-ghost"
                 >
                   <Glyph as={Paperclip} size={16} />
                   {parsingCount > 0 ? `${t('uploadParsing')} ${parsingCount}` : t('uploadFile')}
@@ -261,7 +267,7 @@ export default function TaskPanel({
                 type="button"
                 onClick={onSubmit}
                 disabled={loading || !task.trim()}
-                className="sheen button-md rounded-lg bg-ink px-4 py-2 text-void transition-[background-color,transform] duration-300 ease-out-soft hover:bg-white active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
+                className="btn-primary sheen"
               >
                 {loading ? t('running') : t('submit')}
               </button>

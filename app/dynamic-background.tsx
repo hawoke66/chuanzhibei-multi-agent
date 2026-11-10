@@ -12,12 +12,12 @@ const MAX_DPR = 2;
 const MOBILE_BREAKPOINT = 768;
 const BAND_ANGLE = (-28 * Math.PI) / 180;
 
-const STAR_TINTS = ['210, 222, 255', '226, 214, 255', '255, 255, 255'] as const;
+const STAR_TINTS = ['210, 222, 255', '255, 255, 255', '255, 234, 204', '198, 214, 255'] as const;
 const LINE_RGB = '198, 212, 255';
 
 // 流星：每 14 到 26 秒一颗，从右上往左下
-const METEOR_MIN_MS = 14_000;
-const METEOR_MAX_MS = 26_000;
+const METEOR_MIN_MS = 8_000;
+const METEOR_MAX_MS = 15_000;
 
 interface Star {
   x: number;
@@ -227,6 +227,7 @@ export default function DynamicBackground() {
 
     function draw(now: number) {
       if (width === 0 || height === 0) return;
+      // 正常滚动，没有翻页过渡，星空始终按自身节奏闪烁与视差
       const t = reduced ? 0 : now / 1000;
 
       const motionScale = width < MOBILE_BREAKPOINT ? 0.5 : 1;

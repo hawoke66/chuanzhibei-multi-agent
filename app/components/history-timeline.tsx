@@ -51,7 +51,7 @@ export default function HistoryTimeline({
   ];
 
   return (
-    <section className="relative mx-auto w-full max-w-7xl px-6 py-16 lg:px-8">
+    <section className="relative mx-auto w-full max-w-7xl px-0 py-10">
       <Reveal>
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-4">
           <h2 className="caption-4 text-ink-3">{t('historyTitle')}</h2>

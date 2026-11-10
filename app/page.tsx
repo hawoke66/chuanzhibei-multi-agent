@@ -21,6 +21,7 @@ import type {
   ExpertResult,
   HistoryItem,
   QualityOutcome,
+  RunSnapshot,
   SourcesState,
   Subtask,
   ToolTrace,
@@ -40,21 +41,27 @@ import {
   type PluginState,
 } from '../lib/plugins';
 import { TASK_TEMPLATES, type TaskTemplate } from '../lib/task-templates';
+import AgentDag from './components/dag';
 import Experts from './components/experts';
 import Flow from './components/flow';
+import QualityPanel from './components/quality-panel';
+import ResultMeta from './components/result-meta';
+import RunCompare from './components/run-compare';
 import Hero from './components/hero';
+import { BlurFade } from './components/magicui/blur-fade';
+import { AnimatedGradientText } from './components/magicui/animated-gradient-text';
 import HistoryTimeline from './components/history-timeline';
 import PluginCenter from './components/plugin-center';
 import Results from './components/results';
 import Scenarios from './components/scenarios';
 import SiteFooter from './components/site-footer';
 import SiteNav from './components/site-nav';
-import Tagline from './components/tagline';
 import TaskPanel from './components/task-panel';
 
 const HISTORY_KEY = 'chuanzhibei-history';
 const HISTORY_LIMIT = 10;
 const MANIFEST_MAX_BYTES = 64 * 1024;
+const SECTION_IDS = ['intro', 'dispatch', 'experts', 'quality', 'result', 'epilogue'];
 
 function initialStatus(): Record<AgentId, { status: AgentStatus; detail: string }> {
   const out = {} as Record<AgentId, { status: AgentStatus; detail: string }>;
@@ -150,6 +157,14 @@ export default function Home() {
   const [retryCounts, setRetryCounts] = useState<Record<string, number>>({});
   const [retryingAgent, setRetryingAgent] = useState<AgentName | null>(null);
   const [voiceListening, setVoiceListening] = useState(false);
+  const [page, setPage] = useState(1);
+  const [lastRun, setLastRun] = useState<RunSnapshot | null>(null);
+  const [previousRun, setPreviousRun] = useState<RunSnapshot | null>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [shareNotice, setShareNotice] = useState('');
+  const [shareLink, setShareLink] = useState('');
+  const lastRunRef = useRef<RunSnapshot | null>(null);
+  const langRef = useRef<Lang>(lang);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
   const attachmentsRef = useRef<Attachment[]>([]);
@@ -234,6 +249,37 @@ export default function Home() {
   }, [attachments]);
 
   useEffect(() => {
+    langRef.current = lang;
+  }, [lang]);
+
+  /* 打开页面时：恢复上次两次运行的结果（供对比），并读分享链接里的任务文本 */
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        const raw = window.localStorage.getItem('cz-last-run');
+        if (raw) {
+          const parsed = JSON.parse(raw) as RunSnapshot;
+          setLastRun(parsed);
+          lastRunRef.current = parsed;
+        }
+        const rawPrevious = window.localStorage.getItem('cz-prev-run');
+        if (rawPrevious) setPreviousRun(JSON.parse(rawPrevious) as RunSnapshot);
+      } catch {
+        // 本地状态坏了就当没有
+      }
+      const params = new URLSearchParams(window.location.search);
+      const shared = params.get('task');
+      if (shared) {
+        setTask(shared);
+        if (params.get('ref') === '1') {
+          setImportNotice(TEXT[langRef.current].shareRefNote ?? TEXT.zh.shareRefNote);
+        }
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
     };
@@ -253,13 +299,54 @@ export default function Home() {
   const agentLabel = (id: AgentId) => AGENT_LABEL[lang][id] ?? AGENT_LABEL.zh[id] ?? id;
   const statusLabel = (status: AgentStatus) => STATUS_LABEL[lang][status] ?? STATUS_LABEL.zh[status] ?? status;
 
-  function scrollToTask() {
-    const section = document.getElementById('task');
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    section?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
-    window.setTimeout(() => {
-      document.getElementById('task-input')?.focus({ preventScroll: true });
-    }, reduced ? 0 : 420);
+  /** 平滑滚到某一章（Magic UI 版不再有翻页系统，正常滚动） */
+  function goToSection(next: number) {
+    const index = Math.min(6, Math.max(1, next));
+    setPage(index);
+    const target = document.getElementById(SECTION_IDS[index - 1]);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // 滚动反推当前章节：以视口 42% 处为基准，最后一节到底时强制算尾声
+  useEffect(() => {
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const probe = window.innerHeight * 0.42;
+      let current = 1;
+      SECTION_IDS.forEach((id, index) => {
+        const el = document.getElementById(id);
+        if (el && el.getBoundingClientRect().top <= probe) current = index + 1;
+      });
+      const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4;
+      if (atBottom) current = SECTION_IDS.length;
+      setPage((prev) => (prev === current ? prev : current));
+    };
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(update);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    update();
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      window.cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  /** 分享：只把任务文本编码进 URL；带参考资料时多一个 ref=1 标记，打开后提示重传。 */
+  async function handleShare() {
+    const hasReference = reference.trim().length > 0 || attachments.length > 0;
+    const base = window.location.origin + window.location.pathname;
+    const url = base + '?task=' + encodeURIComponent(task.trim()) + (hasReference ? '&ref=1' : '');
+    setShareLink('');
+    setShareNotice('');
+    const ok = await copyText(url);
+    setShareNotice(ok ? t('shareCopied') : t('shareFailed'));
+    if (!ok) setShareLink(url);
   }
 
   function handleEvent(ev: Record<string, unknown>) {
@@ -268,6 +355,11 @@ export default function Home() {
       const status = ev.status as AgentStatus;
       const detail = typeof ev.detail === 'string' ? ev.detail : '';
       setAgentStatus((prev) => ({ ...prev, [agent]: { status, detail } }));
+      if (status === 'running' || status === 'done') {
+        if (agent === 'dispatcher') goToSection(2);
+        else if (agent === 'research' || agent === 'writer' || agent === 'coder') goToSection(3);
+        else if (agent === 'summarizer' || agent === 'qc' || agent === 'reviser') goToSection(4);
+      }
     } else if (ev.type === 'plan') {
       const p = ev.plan as { plan: string; subtasks: Subtask[] };
       setPlan(p.plan || '');
@@ -288,6 +380,28 @@ export default function Home() {
       if (nextQuality && !doneHandledRef.current) {
         doneHandledRef.current = true;
         const lastQc = nextQuality.qcHistory[nextQuality.qcHistory.length - 1];
+        const snapshot: RunSnapshot = {
+          task: activeTaskRef.current,
+          final: nextQuality.final,
+          score: lastQc?.score ?? null,
+          revisions: nextQuality.revisions,
+          elapsed: finishedElapsed,
+          time: new Date().toISOString(),
+          breakdown: lastQc?.breakdown,
+        };
+        const previousSnapshot = lastRunRef.current;
+        lastRunRef.current = snapshot;
+        setLastRun(snapshot);
+        setPreviousRun(previousSnapshot);
+        try {
+          window.localStorage.setItem('cz-last-run', JSON.stringify(snapshot));
+          if (previousSnapshot) {
+            window.localStorage.setItem('cz-prev-run', JSON.stringify(previousSnapshot));
+          }
+        } catch {
+          // 存不下就不存
+        }
+        goToSection(5);
         const record: HistoryItem = {
           task: activeTaskRef.current,
           final: nextQuality.final,
@@ -347,6 +461,9 @@ export default function Home() {
             thumb,
           };
           setAttachments((prev) => [...prev, attachment]);
+          setImportNotice(
+            t('ocrExtracted').replace('{n}', String(attachment.chars)),
+          );
           continue;
         }
         const text = (await extractFileText(file)).trim();
@@ -519,6 +636,8 @@ export default function Home() {
 
     setLoading(true);
     setError('');
+    setShareNotice('');
+    setShareLink('');
     setRetryable(false);
     setPlan('');
     setSubtasks([]);
@@ -713,112 +832,183 @@ export default function Home() {
   const finalFailed = !selectedHistory && quality?.finalVerdict === 'fail';
   const hasResult = Boolean(selectedHistory || quality);
 
-  return (
-    <>
-      <SiteNav t={t} langLabel={t('langToggle')} onToggleLang={toggleLang} />
-      <main id="main" className="relative z-10">
-        <Hero t={t} agentLabel={agentLabel} onStart={scrollToTask} />
+  const pageLabels = [
+    t('pageLabel1'),
+    t('pageLabel2'),
+    t('pageLabel3'),
+    t('pageLabel4'),
+    t('pageLabel5'),
+    t('pageLabel6'),
+  ];
+  const pageBody = 'w-full';
 
+  const pages = [
+    <div key="page-1" className={pageBody}>
+      <div data-stagger>
+        <Hero t={t} />
+      </div>
+      <div data-stagger>
         <TaskPanel
-          t={t}
-          lang={lang}
-          examples={EXAMPLES[lang]}
-          templates={TASK_TEMPLATES}
-          templatesEnabled={pluginState['task-templates']}
-          task={task}
-          onTaskChange={(value) => {
-            setTask(value);
-            setCancelled(false);
-          }}
-          reference={reference}
-          onReferenceChange={(value) => {
-            setReference(value);
-            setImportNotice('');
-          }}
-          attachments={attachments}
-          onAddFiles={(files) => void handleAddFiles(files)}
-          onRemoveAttachment={removeAttachment}
-          parsingCount={parsingCount}
-          notice={importNotice}
-          fileInputRef={fileInputRef}
-          searchEnabled={searchEnabled}
-          onToggleSearch={setSearchEnabled}
-          voiceSupported={voiceSupported}
-          voiceListening={voiceListening}
-          onToggleVoice={toggleVoice}
-          selectedExperts={selectedExperts}
-          onToggleExpert={(agent, next) => setSelectedExperts((prev) => ({ ...prev, [agent]: next }))}
-          loading={loading}
-          onSubmit={() => void executeTask(task)}
-          onCancel={cancelRun}
-          cancelled={cancelled}
-          error={error}
-          retryable={retryable}
-          onRetry={() =>
-            void executeTask(lastRunConfigRef.current.task, {
-              reference: lastRunConfigRef.current.reference,
-              experts: lastRunConfigRef.current.experts,
-            })
-          }
-          onUseTemplate={useTemplate}
-          agentLabel={agentLabel}
+        t={t}
+        lang={lang}
+        examples={EXAMPLES[lang]}
+        templates={TASK_TEMPLATES}
+        templatesEnabled={pluginState['task-templates']}
+        task={task}
+        onTaskChange={(value) => {
+          setTask(value);
+          setCancelled(false);
+        }}
+        reference={reference}
+        onReferenceChange={(value) => {
+          setReference(value);
+          setImportNotice('');
+        }}
+        attachments={attachments}
+        onAddFiles={(files) => void handleAddFiles(files)}
+        onRemoveAttachment={removeAttachment}
+        parsingCount={parsingCount}
+        notice={importNotice}
+        fileInputRef={fileInputRef}
+        searchEnabled={searchEnabled}
+        onToggleSearch={setSearchEnabled}
+        voiceSupported={voiceSupported}
+        voiceListening={voiceListening}
+        onToggleVoice={toggleVoice}
+        selectedExperts={selectedExperts}
+        onToggleExpert={(agent, next) => setSelectedExperts((prev) => ({ ...prev, [agent]: next }))}
+        loading={loading}
+        onSubmit={() => void executeTask(task)}
+        onCancel={cancelRun}
+        cancelled={cancelled}
+        error={error}
+        retryable={retryable}
+        onRetry={() =>
+          void executeTask(lastRunConfigRef.current.task, {
+            reference: lastRunConfigRef.current.reference,
+            experts: lastRunConfigRef.current.experts,
+          })
+        }
+        onUseTemplate={useTemplate}
+        agentLabel={agentLabel}
         />
+      </div>
+      <div data-stagger>
+        <Scenarios t={t} compact />
+      </div>
+    </div>,
 
+    <div key="page-2" className={pageBody}>
+      <div data-stagger>
+        <PageHead title={t('pageTitle2')} hint={t('pageHint2')} />
+      </div>
+      <div data-stagger>
+        <Flow
+        t={t}
+        agentLabel={agentLabel}
+        statusLabel={statusLabel}
+        agentStatus={agentStatus}
+        plan={plan}
+        subtasks={subtasks}
+        tools={tools}
+          loading={loading}
+        />
+      </div>
+    </div>,
+
+    <div key="page-3" className={pageBody}>
+      <div data-stagger>
+        <PageHead title={t('pageTitle3')} hint={t('pageHint3')} />
+      </div>
+      <div data-stagger>
+        <AgentDag t={t} agentLabel={agentLabel} statusLabel={statusLabel} agentStatus={agentStatus} />
+      </div>
+      <div data-stagger>
         <Experts
-          t={t}
-          agentLabel={agentLabel}
-          statusLabel={statusLabel}
-          agentStatus={agentStatus}
-          doneCount={doneAgentCount}
-          activeCount={activeAgentCount}
-          overallPercent={overallPercent}
-          onRetryExpert={(agent) => void retryExpert(agent)}
-          retryCounts={retryCounts}
+        t={t}
+        agentLabel={agentLabel}
+        statusLabel={statusLabel}
+        agentStatus={agentStatus}
+        doneCount={doneAgentCount}
+        activeCount={activeAgentCount}
+        overallPercent={overallPercent}
+        onRetryExpert={(agent) => void retryExpert(agent)}
+        retryCounts={retryCounts}
           retryingAgent={retryingAgent}
         />
+      </div>
+    </div>,
 
-        <Tagline t={t} />
-
-        <Flow
-          t={t}
-          agentLabel={agentLabel}
-          statusLabel={statusLabel}
-          agentStatus={agentStatus}
-          plan={plan}
-          subtasks={subtasks}
-          tools={tools}
+    <div key="page-4" className={pageBody}>
+      <div data-stagger>
+        <PageHead title={t('pageTitle4')} hint={t('pageHint4')} />
+      </div>
+      <div data-stagger>
+        <QualityPanel
+        t={t}
+        hasResult={hasResult}
+        loading={loading}
+        isHistoryView={Boolean(selectedHistory)}
+        score={shownScore}
+        scorePass={shownScorePass}
+        qcHistory={selectedHistory ? [] : (quality?.qcHistory ?? [])}
+        revisions={shownRevisions}
+        finalFailed={finalFailed}
+        draft={quality?.draft ?? ''}
+        revised={quality?.revised ?? ''}
         />
+      </div>
+    </div>,
 
+    <div key="page-5" className={pageBody}>
+      <div data-stagger>
+        <PageHead title={t('pageTitle5')} hint={t('pageHint5')} />
+      </div>
+      <div data-stagger className="min-h-0 flex-1">
         <Results
+        t={t}
+        hasResult={hasResult}
+        loading={loading}
+        isHistoryView={Boolean(selectedHistory)}
+        task={selectedHistory ? selectedHistory.task : resultTask}
+        final={shownFinal}
+        copiedFinal={copiedFinal}
+        onCopy={() => void handleCopyFinal()}
+        onExport={handleExport}
+        exportEnabled={pluginState['markdown-export']}
+        onShare={() => void handleShare()}
+        shareNotice={shareNotice}
+        shareLink={shareLink}
+        results={selectedHistory ? [] : results}
+        agentLabel={agentLabel}
+        statusLabel={statusLabel}
+        onStart={() => goToSection(1)}
+        compareOpen={compareOpen}
+        onToggleCompare={() => setCompareOpen((value) => !value)}
+      />
+
+      {compareOpen && <RunCompare t={t} previous={previousRun} current={lastRun} />}
+      </div>
+    </div>,
+
+    <div key="page-6" className={pageBody}>
+      <div data-stagger>
+        <PageHead title={t('pageTitle6')} hint={t('pageHint6')} />
+      </div>
+      <div data-stagger className={hasResult ? undefined : 'hidden'}>
+        <ResultMeta
           t={t}
-          hasResult={hasResult}
-          loading={loading}
           isHistoryView={Boolean(selectedHistory)}
-          task={selectedHistory ? selectedHistory.task : resultTask}
-          final={shownFinal}
-          score={shownScore}
-          scorePass={shownScorePass}
           elapsed={shownElapsed}
           characters={shownFinalChars}
           researchWriterChars={researchWriterChars}
           revisions={shownRevisions}
           usage={selectedHistory ? undefined : quality?.usage}
-          qcHistory={selectedHistory ? [] : quality?.qcHistory ?? []}
-          finalFailed={finalFailed}
-          copiedFinal={copiedFinal}
-          onCopy={() => void handleCopyFinal()}
-          onExport={handleExport}
-          exportEnabled={pluginState['markdown-export']}
-          results={selectedHistory ? [] : results}
-          agentLabel={agentLabel}
-          statusLabel={statusLabel}
-          onStart={scrollToTask}
           sources={sources}
           sourcesState={sourcesState}
-          draft={quality?.draft ?? ''}
-          revised={quality?.revised ?? ''}
         />
-
+      </div>
+      <div data-stagger className="mt-6 min-h-0 flex-1 overflow-y-auto">
         <HistoryTimeline
           t={t}
           lang={lang}
@@ -828,8 +1018,7 @@ export default function Home() {
           onClear={clearHistory}
         />
 
-        <Scenarios t={t} />
-
+        <div className={hasResult ? undefined : 'hidden'}>
         <PluginCenter
           t={t}
           lang={lang}
@@ -844,8 +1033,75 @@ export default function Home() {
             setImportedManifests((prev) => prev.filter((item) => item.id !== id))
           }
         />
+        </div>
+
+        <SiteFooter t={t} labels={pageLabels} onNavigate={goToSection} />
+      </div>
+    </div>,
+  ];
+
+  return (
+    <>
+      <SiteNav
+        t={t}
+        langLabel={t('langToggle')}
+        onToggleLang={toggleLang}
+        page={page}
+        onNavigate={goToSection}
+        labels={pageLabels}
+      />
+      <main id="main" className="relative z-10">
+        {pages.map((node, index) => (
+          <section
+            key={index}
+            id={SECTION_IDS[index]}
+            aria-label={pageLabels[index]}
+            className={`relative w-full px-6 py-14 lg:px-8 lg:py-16 ${index === 0 ? 'pt-24' : 'border-t border-white/[0.06]'}`}
+          >
+            <div className="mx-auto w-full max-w-6xl">
+              <BlurFade>
+                <Grow>{node}</Grow>
+              </BlurFade>
+            </div>
+          </section>
+        ))}
       </main>
-      <SiteFooter t={t} />
     </>
+  );
+}
+
+/** 内容高度平滑生长：空闲时紧凑，流式内容进来时高度跟着长，不跳变。 */
+function Grow({ children }: { children: React.ReactNode }) {
+  const inner = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    const el = inner.current;
+    if (!el) return;
+    const update = () => setHeight(el.offsetHeight);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      style={{ height, transition: 'height 520ms cubic-bezier(0.22, 1, 0.36, 1)' }}
+      className="overflow-hidden"
+    >
+      <div ref={inner}>{children}</div>
+    </div>
+  );
+}
+
+function PageHead({ title, hint }: { title: string; hint: string }) {
+  return (
+    <div className="mb-5 border-b border-line pb-3">
+      <h2 className="heading-5 text-ink">
+        <AnimatedGradientText>{title}</AnimatedGradientText>
+      </h2>
+      <p className="caption-5 mt-1 text-pretty text-ink-3">{hint}</p>
+    </div>
   );
 }

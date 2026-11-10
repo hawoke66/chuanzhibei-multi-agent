@@ -52,7 +52,7 @@ export function resolveApiKey(): string {
   if (fromEnv && fromEnv.trim()) return fromEnv.trim();
   const keyFile = process.env.DEEPSEEK_OCR_KEY_FILE || path.join(homedir(), '.config', 'deepseek-ocr', 'key');
   try {
-    const fromFile = readFileSync(keyFile, 'utf8').trim();
+    const fromFile = readFileSync(/* turbopackIgnore: true */ keyFile, 'utf8').trim();
     if (fromFile) return fromFile;
   } catch {
     // 没有密钥文件就按未配置处理

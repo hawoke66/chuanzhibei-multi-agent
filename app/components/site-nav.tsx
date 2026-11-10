@@ -3,19 +3,23 @@
 import { useEffect, useState } from 'react';
 import { List, Star, X } from '@phosphor-icons/react';
 import { Glyph } from './ui';
-import { NAV_LINKS } from '../copy';
 
-/* 悬浮导航：离顶边留空隙、按内容定宽、半透明 + 背景模糊。
-   小屏收进一个按钮，展开是全高面板，链接按阅读顺序依次到位。 */
+/* 悬浮导航：这一版导航就是书的目录，点一下翻到对应章。 */
 
 export default function SiteNav({
   t,
   langLabel,
   onToggleLang,
+  page,
+  onNavigate,
+  labels,
 }: {
   t: (key: string) => string;
   langLabel: string;
   onToggleLang: () => void;
+  page: number;
+  onNavigate: (next: number) => void;
+  labels: string[];
 }) {
   const [open, setOpen] = useState(false);
 
@@ -42,25 +46,31 @@ export default function SiteNav({
         {t('skipToContent')}
       </a>
 
-      <header className="fixed inset-x-0 top-4 z-40 flex justify-center px-4">
-        <nav className="flex w-full max-w-3xl items-center justify-between gap-2 rounded-full border border-line bg-void/70 px-2 py-2 backdrop-blur-md">
-          <a
-            href="#main"
+      <header className="fixed inset-x-0 top-3 z-40 flex justify-center px-4">
+        <nav className="flex w-full max-w-3xl items-center justify-between gap-2 rounded-full border border-white/10 bg-void/55 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl">
+          <button
+            type="button"
+            onClick={() => onNavigate(1)}
             className="flex items-center gap-2 rounded-full px-3 py-1.5 transition-colors duration-300 ease-out-soft hover:bg-raised"
           >
-            <Star size={16} weight="fill" className="text-accent" aria-hidden="true" />
+            <Star size={14} weight="fill" className="text-accent" aria-hidden="true" />
             <span className="title-4 text-ink">{t('navHome')}</span>
-          </a>
+          </button>
 
-          <ul className="hidden items-center gap-1 md:flex">
-            {NAV_LINKS.map((link) => (
-              <li key={link.id}>
-                <a
-                  href={`#${link.id}`}
-                  className="caption-2 rounded-full px-3 py-1.5 text-ink-2 transition-colors duration-300 ease-out-soft hover:bg-raised hover:text-ink"
+          <ul className="hidden items-center gap-0.5 md:flex">
+            {labels.map((label, index) => (
+              <li key={label}>
+                <button
+                  type="button"
+                  onClick={() => onNavigate(index + 1)}
+                  aria-current={page === index + 1 ? 'page' : undefined}
+                  className={`caption-2 rounded-full px-2.5 py-1.5 transition-colors duration-300 ease-out-soft ${
+                    page === index + 1 ? 'bg-raised text-ink' : 'text-ink-2 hover:bg-raised hover:text-ink'
+                  }`}
                 >
-                  {t(link.key)}
-                </a>
+                  <span className="font-mono text-ink-3 tabular-nums">{index + 1}</span>
+                  <span className="ml-1.5">{label}</span>
+                </button>
               </li>
             ))}
           </ul>
@@ -69,7 +79,7 @@ export default function SiteNav({
             <button
               type="button"
               onClick={onToggleLang}
-              className="caption-2 rounded-full px-3 py-1.5 text-ink-2 transition-colors duration-300 ease-out-soft hover:bg-raised hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              className="caption-2 rounded-full px-2.5 py-1.5 text-ink-2 transition-colors duration-300 ease-out-soft hover:bg-raised hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               {langLabel}
             </button>
@@ -101,7 +111,7 @@ export default function SiteNav({
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="caption-4 text-ink-3">{t('navHome')}</span>
+            <span className="caption-4 text-ink-3">{t('pageJump')}</span>
             <button
               type="button"
               onClick={() => setOpen(false)}
@@ -112,20 +122,24 @@ export default function SiteNav({
               <Glyph as={X} size={18} />
             </button>
           </div>
-          <div className="mt-10 flex flex-col gap-2">
-            {NAV_LINKS.map((link, index) => (
-              <a
-                key={link.id}
-                href={`#${link.id}`}
-                onClick={() => setOpen(false)}
+          <div className="mt-8 flex flex-col gap-1">
+            {labels.map((label, index) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => {
+                  onNavigate(index + 1);
+                  setOpen(false);
+                }}
                 tabIndex={open ? 0 : -1}
-                className={`heading-5 border-b border-line py-4 text-ink transition-[transform,opacity] duration-500 ease-out-soft ${
+                className={`flex items-baseline gap-3 border-b border-line py-3 text-left transition-[transform,opacity] duration-500 ease-out-soft ${
                   open ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'
-                }`}
+                } ${page === index + 1 ? 'text-ink' : 'text-ink-2'}`}
                 style={{ transitionDelay: open ? `${index * 60}ms` : '0ms' }}
               >
-                {t(link.key)}
-              </a>
+                <span className="caption-5 font-mono text-ink-3 tabular-nums">0{index + 1}</span>
+                <span className="heading-6">{label}</span>
+              </button>
             ))}
             <button
               type="button"
@@ -134,10 +148,10 @@ export default function SiteNav({
                 setOpen(false);
               }}
               tabIndex={open ? 0 : -1}
-              className={`caption-1 mt-8 self-start rounded-lg border border-line-2 px-4 py-2 text-ink-2 transition-[transform,opacity] duration-500 ease-out-soft ${
+              className={`caption-1 mt-6 self-start rounded-lg border border-line-2 px-4 py-2 text-ink-2 transition-[transform,opacity] duration-500 ease-out-soft ${
                 open ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'
               }`}
-              style={{ transitionDelay: open ? `${NAV_LINKS.length * 60}ms` : '0ms' }}
+              style={{ transitionDelay: open ? `${labels.length * 60}ms` : '0ms' }}
             >
               {langLabel}
             </button>

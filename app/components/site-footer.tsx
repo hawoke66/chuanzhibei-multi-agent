@@ -1,14 +1,21 @@
 ﻿'use client';
 
 import { Star } from '@phosphor-icons/react';
-import { NAV_LINKS } from '../copy';
 
 /* 页脚：产品名 + 一条标语 + 真实链接 + 设计规范署名。
    底部留白略多于顶部。 */
 
-export default function SiteFooter({ t }: { t: (key: string) => string }) {
+export default function SiteFooter({
+  t,
+  labels,
+  onNavigate,
+}: {
+  t: (key: string) => string;
+  labels: string[];
+  onNavigate: (next: number) => void;
+}) {
   return (
-    <footer className="relative z-10 mx-auto w-full max-w-7xl px-6 pb-24 pt-20 lg:px-8 lg:pb-28">
+    <footer className="relative z-10 mx-auto w-full max-w-7xl px-0 pb-6 pt-10">
       <div className="grid gap-10 border-t border-line pt-10 lg:grid-cols-12">
         <div className="lg:col-span-6">
           <div className="flex items-center gap-2">
@@ -21,14 +28,15 @@ export default function SiteFooter({ t }: { t: (key: string) => string }) {
         <div className="lg:col-span-3">
           <p className="caption-5 text-ink-3">{t('footerProduct')}</p>
           <ul className="mt-2 space-y-1.5">
-            {NAV_LINKS.map((link) => (
-              <li key={link.id}>
-                <a
-                  href={`#${link.id}`}
+            {labels.map((label, index) => (
+              <li key={label}>
+                <button
+                  type="button"
+                  onClick={() => onNavigate(index + 1)}
                   className="caption-2 text-ink-2 transition-colors duration-300 ease-out-soft hover:text-ink"
                 >
-                  {t(link.key)}
-                </a>
+                  {label}
+                </button>
               </li>
             ))}
             <li>

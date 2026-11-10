@@ -40,7 +40,7 @@ export default function PluginCenter({
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   return (
-    <section id="plugins" className="relative mx-auto w-full max-w-7xl px-6 py-24 lg:px-8">
+    <section id="plugins" className="relative mx-auto w-full max-w-7xl px-0 py-10">
       <Reveal>
         <div className="grid gap-6 lg:grid-cols-12 lg:gap-8">
           <div className="lg:col-span-5">

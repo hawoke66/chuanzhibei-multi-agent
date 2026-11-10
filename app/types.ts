@@ -79,3 +79,13 @@ export interface SourcesState {
   enabled: boolean;
   configured: boolean;
 }
+
+export interface RunSnapshot {
+  task: string;
+  final: string;
+  score: number | null;
+  revisions: number;
+  elapsed: number | null;
+  time: string;
+  breakdown?: { facts: number; relevance: number; structure: number; language: number };
+}

@@ -581,3 +581,141 @@ const EXTRA_TEXT: Record<Lang, Record<string, string>> = {
 
 Object.assign(TEXT.zh, EXTRA_TEXT.zh);
 Object.assign(TEXT.en, EXTRA_TEXT.en);
+
+/* ============================================================
+   翻书版新增文案
+   ============================================================ */
+const BOOK_TEXT: Record<Lang, Record<string, string>> = {
+  zh: {
+  "bookPage": "第 {n} 页 / 共 {total} 页",
+  "pagePrev": "上一页",
+  "pageNext": "下一页",
+  "pageJump": "跳转页码",
+  "pageLabel1": "序章",
+  "pageLabel2": "调度",
+  "pageLabel3": "专家",
+  "pageLabel4": "质检",
+  "pageLabel5": "成果",
+  "pageTitle1": "序章 · 派一个任务",
+  "pageTitle2": "第一章 · 调度拆分",
+  "pageTitle3": "第二章 · 专家协作",
+  "pageTitle4": "第三章 · 质检与修订",
+  "pageTitle5": "尾声 · 成果与历史",
+  "pageIntro": "写下一个任务，剩下的交给这本册子里的四个专家",
+  "dispatchEmpty": "还没有派发任务。回到序章写下任务并提交，这一页会显示调度计划与子任务",
+  "dispatchPlan": "计划",
+  "dispatchSubtasks": "子任务",
+  "expertsEmpty": "任务跑起来后，这里会逐个点亮七个角色的状态",
+  "expertInactive": "未激活（按需）",
+  "expertFlowCaption": "节点状态与下方卡片同源，连线随进度亮起",
+  "qualityEmpty": "还没有质检记录。任务跑完后，四项分与每轮意见会出现在这一页",
+  "resultEmptyPage": "还没有成果。跑完一次任务后，这里会出现最终文本与消耗",
+  "qualityArrow": "质检分",
+  "compareToggle": "对比两次运行",
+  "compareHide": "收起对比",
+  "compareTitle": "同一任务，两次运行",
+  "comparePrev": "上一次",
+  "compareNow": "本次",
+  "compareHint": "再跑一次同一任务即可对比",
+  "compareDelta": "差值",
+  "compareRubric": "四项分",
+  "share": "分享",
+  "shareCopied": "链接已复制",
+  "shareFailed": "复制失败，请手动复制下面的链接",
+  "shareRefNote": "这条链接只带任务文本，参考资料需要重新上传",
+  "shareLinkLabel": "分享链接",
+  "multimodalLabel": "多模态输入",
+  "multimodalHint": "图片（OCR 提取文字）/ PDF / Word / 纯文本，只在本地解析",
+  "ocrExtracted": "已提取 {n} 字，已并入参考资料",
+  "chapter": "章"
+},
+  en: {
+  "bookPage": "Page {n} of {total}",
+  "pagePrev": "Previous page",
+  "pageNext": "Next page",
+  "pageJump": "Go to page",
+  "pageLabel1": "Intro",
+  "pageLabel2": "Dispatch",
+  "pageLabel3": "Experts",
+  "pageLabel4": "Quality",
+  "pageLabel5": "Result",
+  "pageTitle1": "Intro · send a task",
+  "pageTitle2": "Chapter one · dispatch",
+  "pageTitle3": "Chapter two · experts",
+  "pageTitle4": "Chapter three · quality",
+  "pageTitle5": "Epilogue · output and history",
+  "pageIntro": "Write one task, the four experts in this book take it from there",
+  "dispatchEmpty": "No task sent yet. Go back to the intro, write a task and submit it: the plan and subtasks appear here",
+  "dispatchPlan": "Plan",
+  "dispatchSubtasks": "Subtasks",
+  "expertsEmpty": "Once a task runs, the seven roles light up here one by one",
+  "expertInactive": "Not used (on demand)",
+  "expertFlowCaption": "Node states come from the same data as the cards below; edges light up as work advances",
+  "qualityEmpty": "No quality records yet. Once a task finishes, the four scores and each round of feedback appear here",
+  "resultEmptyPage": "No output yet. Finish one run and the final text and usage appear here",
+  "qualityArrow": "QC score",
+  "compareToggle": "Compare runs",
+  "compareHide": "Hide comparison",
+  "compareTitle": "Same task, two runs",
+  "comparePrev": "Previous",
+  "compareNow": "Current",
+  "compareHint": "Run the same task again to compare",
+  "compareDelta": "Delta",
+  "compareRubric": "Rubric",
+  "share": "Share",
+  "shareCopied": "Link copied",
+  "shareFailed": "Copy failed, select the link below and copy it manually",
+  "shareRefNote": "The link only carries the task text; upload the reference files again",
+  "shareLinkLabel": "Share link",
+  "multimodalLabel": "Multimodal input",
+  "multimodalHint": "Image (OCR text) / PDF / Word / plain text, parsed locally",
+  "ocrExtracted": "Extracted {n} characters, added to the reference",
+  "chapter": "Ch."
+},
+};
+
+Object.assign(TEXT.zh, BOOK_TEXT.zh);
+Object.assign(TEXT.en, BOOK_TEXT.en);
+
+const PAGE_HINTS: Record<Lang, Record<string, string>> = {
+  zh: {
+    pageHint2: "调度计划、子任务与工具轨迹",
+    pageHint3: "七个角色的状态，与上方的实时协作图同源",
+    pageHint4: "四项分、每轮质检意见与修订轮数",
+    pageHint5: "最终成果、消耗与历史",
+  },
+  en: {
+    pageHint2: "Plan, subtasks and tool traces",
+    pageHint3: "Seven role states, driven by the same data as the live graph above",
+    pageHint4: "Four scores, every QC round and revision count",
+    pageHint5: "Final output, usage and history",
+  },
+};
+Object.assign(TEXT.zh, PAGE_HINTS.zh);
+Object.assign(TEXT.en, PAGE_HINTS.en);
+
+const GROUP_TEXT: Record<Lang, Record<string, string>> = {
+  zh: { groupDispatch: '调度', groupParallel: '并行', groupReview: '汇总 · 验收 · 修订' },
+  en: { groupDispatch: 'Dispatch', groupParallel: 'In parallel', groupReview: 'Synthesis · review · revision' },
+};
+Object.assign(TEXT.zh, GROUP_TEXT.zh);
+Object.assign(TEXT.en, GROUP_TEXT.en);
+
+const PAGE6: Record<Lang, Record<string, string>> = {
+  zh: {
+    pageLabel6: '尾声',
+    pageTitle5: '终章 · 最终成果',
+    pageTitle6: '尾声 · 指标与历史',
+    pageHint5: 'Markdown 全文，复制、导出、分享都在这一页',
+    pageHint6: 'Token 消耗、来源与历史任务，像片尾字幕',
+  },
+  en: {
+    pageLabel6: 'Epilogue',
+    pageTitle5: 'Final chapter · the output',
+    pageTitle6: 'Epilogue · usage and history',
+    pageHint5: 'Full Markdown; copy, export and share live here',
+    pageHint6: 'Tokens, sources and past tasks, like end credits',
+  },
+};
+Object.assign(TEXT.zh, PAGE6.zh);
+Object.assign(TEXT.en, PAGE6.en);

@@ -1,18 +1,15 @@
 'use client';
 
-import { Code, MagnifyingGlass, NotePencil, ShareNetwork } from '@phosphor-icons/react';
 import type { AgentId, AgentName, AgentStatus } from '../copy';
-import { Glyph, Reveal, StarDot } from './ui';
+import { Reveal, StarDot } from './ui';
+import { MagicCard } from './magicui/magic-card';
 
-/* 专家区：调度官一条宽幅，三位专家三条错落的行。
-   没有一张卡是同一套「描边 + 阴影 + 背景」模板；层级靠表面色与 hairline 表达。 */
+/* 七张状态卡：不按 7 等分排一行，按流程分三段——调度 / 并行 / 汇总·验收·修订。
+   状态一变，卡片绕 Y 轴翻一下落到新状态；状态与协作图同源。 */
 
-type StatusMap = Record<AgentId, { status: AgentStatus; detail: string }>;
-
-const ROWS: { id: AgentId; glyph: typeof MagnifyingGlass; roleStart: string; roleKey: string }[] = [
-  { id: 'research', glyph: MagnifyingGlass, roleStart: 'lg:col-start-4', roleKey: 'roleResearch' },
-  { id: 'writer', glyph: NotePencil, roleStart: 'lg:col-start-5', roleKey: 'roleWriter' },
-  { id: 'coder', glyph: Code, roleStart: 'lg:col-start-4', roleKey: 'roleCoder' },
+const ROWS: { key: string; ids: AgentId[] }[] = [
+  { key: 'groupDispatch', ids: ['dispatcher', 'research', 'writer'] },
+  { key: 'groupParallel', ids: ['coder', 'summarizer', 'qc', 'reviser'] },
 ];
 
 export default function Experts({
@@ -30,7 +27,7 @@ export default function Experts({
   t: (key: string) => string;
   agentLabel: (id: AgentId) => string;
   statusLabel: (status: AgentStatus) => string;
-  agentStatus: StatusMap;
+  agentStatus: Record<AgentId, { status: AgentStatus; detail: string }>;
   doneCount: number;
   activeCount: number;
   overallPercent: number;
@@ -38,97 +35,81 @@ export default function Experts({
   retryCounts?: Record<string, number>;
   retryingAgent?: AgentName | null;
 }) {
-  const dispatcher = agentStatus.dispatcher;
+  const expertAgents: AgentName[] = ['research', 'writer', 'coder'];
 
   return (
-    <section id="experts" className="relative mx-auto w-full max-w-7xl px-6 py-24 lg:px-8 lg:py-32">
-      <Reveal>
-        <div className="grid gap-6 lg:grid-cols-12 lg:gap-8">
-          <div className="lg:col-span-5">
-            <p className="caption-4 text-ink-3">{t('expertsKicker')}</p>
-            <h2 className="mt-4 text-ink heading-4 sm:heading-3">
-              {t('expertsTitleLine1')}
-              <br />
-              {t('expertsTitleLine2')}
-            </h2>
-          </div>
-          <p className="body-3 lg:col-span-6 lg:col-start-7 lg:self-end text-pretty text-ink-2">
-            {t('expertsLead')}
-          </p>
-        </div>
-      </Reveal>
-
-      <Reveal delay={60}>
-        <div className="mt-14">
-          <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-surface px-6 py-5 lg:px-8">
-            <div className="flex items-center gap-3">
-              <Glyph as={ShareNetwork} size={18} className="text-ink-2" />
-              <h3 className="title-1 text-ink">{agentLabel('dispatcher')}</h3>
-              <span className="caption-5 hidden text-ink-3 sm:inline">{t('roleDispatcher')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <StarDot state={dispatcher.status} size={12} />
-              <span className="caption-2 text-ink-2">{statusLabel(dispatcher.status)}</span>
-              {dispatcher.detail && <span className="caption-5 text-ink-3">{dispatcher.detail}</span>}
-            </div>
-          </div>
-
-          {ROWS.map((row) => {
-            const state = agentStatus[row.id];
+    <div className="mt-4 space-y-3">
+      {ROWS.map((row) => (
+        <div key={row.key} className="flex flex-wrap justify-center gap-3">
+          {row.ids.map((id) => {
+            const state = agentStatus[id];
+            const inactive = state.status === 'inactive';
+            const failed = state.status === 'failed';
+            const canRetry = failed && (expertAgents as string[]).includes(id) && onRetryExpert;
             return (
-              <div
-                key={row.id}
-                className="grid grid-cols-1 gap-y-2 border-t border-line py-6 lg:grid-cols-12 lg:items-center lg:gap-x-8"
+              <MagicCard
+                key={id}
+                className="w-[228px] shrink-0 px-3 py-2.5"
+                glowColor="169, 155, 245"
               >
-                <div className="flex items-center gap-3 lg:col-span-3">
-                  <Glyph as={row.glyph} size={18} className="text-ink-3" />
-                  <h3 className="title-2 text-ink">{agentLabel(row.id)}</h3>
-                </div>
-                <p className={`body-6 text-ink-2 lg:col-span-6 ${row.roleStart}`}>{t(row.roleKey)}</p>
-                <div className="flex items-center gap-2 lg:col-span-2 lg:col-start-11 lg:justify-end">
-                  <StarDot state={state.status} size={12} />
-                  <span className="caption-2 whitespace-nowrap text-ink-2">{statusLabel(state.status)}</span>
-                </div>
-                {state.detail && (
-                  <p className="caption-5 text-ink-3 lg:col-span-2 lg:col-start-11 lg:text-right">{state.detail}</p>
-                )}
-                {state.status === 'failed' && onRetryExpert && (
-                  <div className="lg:col-span-12 lg:flex lg:justify-end">
-                    <button
-                      type="button"
-                      onClick={() => onRetryExpert(row.id as AgentName)}
-                      disabled={Boolean(retryingAgent) || (retryCounts?.[row.id] ?? 0) >= 2}
-                      className="caption-5 rounded border border-line-2 px-2 py-0.5 text-ink-2 transition-colors duration-300 ease-out-soft hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {retryingAgent === row.id
-                        ? t('retryExpertBusy')
-                        : (retryCounts?.[row.id] ?? 0) >= 2
-                          ? t('retryExpertLimit')
-                          : `${t('retryExpert')} (${retryCounts?.[row.id] ?? 0}/2)`}
-                    </button>
+                <div data-status={state.status}>
+                  <div className="agent-card-flip" key={`${state.status}-${state.detail}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="title-4 truncate text-ink">{agentLabel(id)}</p>
+                      <StarDot state={state.status} size={11} />
+                    </div>
+                    <div className="mt-1 flex items-baseline justify-between gap-2">
+                      <p
+                        className={`caption-5 truncate ${
+                          failed
+                            ? 'text-danger'
+                            : inactive
+                              ? 'text-ink-3'
+                              : state.status === 'running'
+                                ? 'text-accent'
+                                : 'text-ink-2'
+                        }`}
+                      >
+                        {inactive ? t('expertInactive') : statusLabel(state.status)}
+                      </p>
+                      <p className="caption-5 truncate text-right text-ink-3">{state.detail || '—'}</p>
+                    </div>
+                    {canRetry && (
+                      <button
+                        type="button"
+                        onClick={() => onRetryExpert(id as AgentName)}
+                        disabled={Boolean(retryingAgent) || (retryCounts?.[id] ?? 0) >= 2}
+                        className="caption-5 mt-1.5 w-full rounded border border-line-2 px-2 py-0.5 text-ink-2 transition-colors duration-300 ease-out-soft hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {retryingAgent === id
+                          ? t('retryExpertBusy')
+                          : (retryCounts?.[id] ?? 0) >= 2
+                            ? t('retryExpertLimit')
+                            : `${t('retryExpert')} (${retryCounts?.[id] ?? 0}/2)`}
+                      </button>
+                    )}
                   </div>
-                )}
-              </div>
+                </div>
+              </MagicCard>
             );
           })}
         </div>
-      </Reveal>
+      ))}
 
-      <Reveal delay={120}>
-        <div className="mt-10 flex items-center gap-4">
-          <p className="caption-4 whitespace-nowrap text-ink-3">{t('progress')}</p>
+      <Reveal>
+        <div className="flex items-center gap-4 pt-1">
+          <p className="caption-5 whitespace-nowrap text-ink-3">{t('progress')}</p>
           <div className="h-0.5 flex-1 overflow-hidden rounded-full bg-line-2">
             <div
               className="h-full origin-left rounded-full bg-accent transition-transform duration-500 ease-out-soft"
               style={{ transform: `scaleX(${overallPercent / 100})` }}
             />
           </div>
-          <p className="caption-4 font-mono text-ink-2 tabular-nums">
+          <p className="caption-5 font-mono text-ink-2 tabular-nums">
             {doneCount} / {activeCount}
           </p>
-          <p className="caption-5 hidden text-ink-3 sm:inline">{t('expertsLiveNote')}</p>
         </div>
       </Reveal>
-    </section>
+    </div>
   );
 }
