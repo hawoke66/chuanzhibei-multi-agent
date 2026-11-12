@@ -12,6 +12,7 @@
 面向三五个人的学生小组、接私活的个人工作室、要做活动材料的老师和社团。
 
 - 仓库：https://github.com/hawoke66/chuanzhibei-multi-agent
+- 在线演示：https://chuanzhibei-multi-agent.netlify.app
 - 技术文档：`docs/技术文档.pdf`（10 页，Markdown 源文件 `docs/技术文档.md`）
 - 演示视频：≤ 5 分钟（按官网提交要求）
 

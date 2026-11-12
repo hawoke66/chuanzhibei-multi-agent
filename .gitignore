@@ -46,3 +46,6 @@ build.log
 
 # local dev restart logs
 dev-restart*.log
+
+# Local Netlify folder
+.netlify
